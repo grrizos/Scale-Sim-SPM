@@ -1,0 +1,31 @@
+For each tensor, SCALE-Sim currently doesn't track which operators produce and consume it.
+1) We need to add the logic of debendency between layers
+
+For OnSRAM:
+2) WE need to add an inter-node spm naager:
+It takes:
+
+The DAG from (1)
+SPM capacity
+Per-layer bandwidth and compute times (from SCALE-Sim's existing output)
+
+And produces for each tensor:
+
+Pinning logic (PinLoc): SPM or DRAM
+StartTS / EndTS: which timesteps it lives on-chip
+
+
+3) We would also need to tell Scale-SIM to skip the computation for transfer for the data that is pinned
+
+For COMSA:
+4)The main idea of COSMA: we need to encode the binary variables (C, P, S, R per tensor per timestep) and the constraints (Eq. 1–11 in the paper) and call an ILP solver (python-mip/or the one paper uses gurobi).
+
+5) A spill/retrieve traffic calculator as additional DRAM traffic on top of the compulsory accesses.   (I dont have a clear idea on how ot do this)
+
+This is the pipeline that is missing from the Scale-sim:
+
+
+
+DNN graph with tensor sizes + liveness → inter-layer memory planning → modified DRAM traffic
+
+

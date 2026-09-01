@@ -297,9 +297,12 @@ class single_layer_sim:
         self.runs_ready = True
 
     # This will write the traces
-    def save_traces(self, top_path):
+    def save_traces(self, top_path,
+                    save_ifmap_trace=True, save_filter_trace=True, save_ofmap_trace=True):
         """
-        Method to save SRAM and DRAM traces for ifmap, filter and ofmap matrices.
+        Method to save SRAM and DRAM traces for ifmap, filter and ofmap matrices. Set
+        save_ifmap_trace/save_filter_trace/save_ofmap_trace to False to skip writing the
+        corresponding CSV files (e.g. to save disk space and I/O time).
         """
         assert self.params_set_flag, 'Parameters are not set'
 
@@ -316,12 +319,15 @@ class single_layer_sim:
         filter_dram_filename = dir_name + '/FILTER_DRAM_TRACE.csv'
         ofmap_dram_filename = dir_name +  '/OFMAP_DRAM_TRACE.csv'
 
-        self.memory_system.print_ifmap_sram_trace(ifmap_sram_filename)
-        self.memory_system.print_ifmap_dram_trace(ifmap_dram_filename)
-        self.memory_system.print_filter_sram_trace(filter_sram_filename)
-        self.memory_system.print_filter_dram_trace(filter_dram_filename)
-        self.memory_system.print_ofmap_sram_trace(ofmap_sram_filename)
-        self.memory_system.print_ofmap_dram_trace(ofmap_dram_filename)
+        if save_ifmap_trace:
+            self.memory_system.print_ifmap_sram_trace(ifmap_sram_filename)
+            self.memory_system.print_ifmap_dram_trace(ifmap_dram_filename)
+        if save_filter_trace:
+            self.memory_system.print_filter_sram_trace(filter_sram_filename)
+            self.memory_system.print_filter_dram_trace(filter_dram_filename)
+        if save_ofmap_trace:
+            self.memory_system.print_ofmap_sram_trace(ofmap_sram_filename)
+            self.memory_system.print_ofmap_dram_trace(ofmap_dram_filename)
 
     #
     def calc_report_data(self):

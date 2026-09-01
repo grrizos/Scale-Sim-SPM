@@ -77,6 +77,9 @@ class SMMScaleSimRunner:
         allow_prefetch: bool  = True,
         output_dir:     str   = "outputs/smm_run",
         verbose:        bool  = True,
+        save_ifmap_trace: bool = True,
+        save_filter_trace: bool = True,
+        save_ofmap_trace: bool = True,
     ):
         self.topology_file  = topology_file
         self.config_file    = config_file
@@ -86,6 +89,9 @@ class SMMScaleSimRunner:
         self.allow_prefetch = allow_prefetch
         self.output_dir     = output_dir
         self.verbose        = verbose
+        self.save_ifmap_trace  = save_ifmap_trace
+        self.save_filter_trace = save_filter_trace
+        self.save_ofmap_trace  = save_ofmap_trace
 
         # SCALE-Sim objects
         self.config = ScaleConfig()
@@ -191,7 +197,7 @@ class SMMScaleSimRunner:
             ifmap_backing_buf_bw  = ifmap_bw,
             filter_backing_buf_bw = filter_bw,
             ofmap_backing_buf_bw  = ofmap_bw,
-            verbose               = False,
+            verbose               = self.verbose,
             estimate_bandwidth_mode = est_bw,
             ifmap_sram_bank_num   = ifmap_bank_num,
             ifmap_sram_bank_port  = ifmap_bank_port,
@@ -230,6 +236,7 @@ class SMMScaleSimRunner:
             spec = self.layer_specs[lid]
 
             if self.verbose:
+                print(f"\nRunning Layer {lid}")
                 print(f"[SMM] Layer {lid:3d} ({spec.name:20s}): "
                       f"{POLICY_NAMES[plan.policy]:30s}  "
                       f"GLB {plan.memory/1024:6.1f} kB  "
@@ -241,7 +248,7 @@ class SMMScaleSimRunner:
                 config_obj   = self.config,
                 topology_obj = self.topo,
                 layout_obj   = self.layout,
-                verbose      = False,
+                verbose      = self.verbose,
             )
 
             if plan.feasible:
@@ -250,7 +257,49 @@ class SMMScaleSimRunner:
             # If infeasible (layer too big for any policy), SCALE-Sim uses its default sizing
 
             sim.run()
-            sim.save_traces(self.output_dir)
+
+            if self.verbose:
+                total_cycles, comp_cycles, stall_cycles, util, mapping_eff, compute_util = \
+                    sim.get_compute_report_items()
+                print('Total cycles: ' + str(total_cycles))
+                print('Compute cycles: ' + str(comp_cycles))
+                print('Stall cycles: ' + str(stall_cycles))
+                print('Overall utilization: ' + "{:.2f}".format(util) + '%')
+                print('Mapping efficiency: ' + "{:.2f}".format(mapping_eff) + '%')
+
+                bw_items = sim.get_bandwidth_report_items()
+                if self.config.sparsity_support is True:
+                    (avg_ifmap_sram_bw, avg_filter_sram_bw, avg_filter_metadata_sram_bw,
+                     avg_ofmap_sram_bw, avg_ifmap_dram_bw, avg_filter_dram_bw,
+                     avg_ofmap_dram_bw) = bw_items
+                else:
+                    (avg_ifmap_sram_bw, avg_filter_sram_bw, avg_ofmap_sram_bw,
+                     avg_ifmap_dram_bw, avg_filter_dram_bw, avg_ofmap_dram_bw) = bw_items
+
+                print('Average IFMAP SRAM BW: ' + "{:.3f}".format(avg_ifmap_sram_bw) +
+                      ' words/cycle')
+                print('Average Filter SRAM BW: ' + "{:.3f}".format(avg_filter_sram_bw) +
+                      ' words/cycle')
+                if self.config.sparsity_support is True:
+                    print('Average Filter Metadata SRAM BW: ' +
+                          "{:.3f}".format(avg_filter_metadata_sram_bw) + ' words/cycle')
+                print('Average OFMAP SRAM BW: ' + "{:.3f}".format(avg_ofmap_sram_bw) +
+                      ' words/cycle')
+                print('Average IFMAP DRAM BW: ' + "{:.3f}".format(avg_ifmap_dram_bw) +
+                      ' words/cycle')
+                print('Average Filter DRAM BW: ' + "{:.3f}".format(avg_filter_dram_bw) +
+                      ' words/cycle')
+                print('Average OFMAP DRAM BW: ' + "{:.3f}".format(avg_ofmap_dram_bw) +
+                      ' words/cycle')
+
+                print('Saving traces: ', end='')
+            sim.save_traces(self.output_dir,
+                            save_ifmap_trace=self.save_ifmap_trace,
+                            save_filter_trace=self.save_filter_trace,
+                            save_ofmap_trace=self.save_ofmap_trace)
+            if self.verbose:
+                print('Done!')
+
             self.layer_sims.append(sim)
 
         print(f"\n[SMM] Simulation complete. Traces in: {self.output_dir}\n")
@@ -298,6 +347,9 @@ if __name__ == "__main__":
     p.add_argument("--homogeneous", action="store_true", help="Use one policy for all layers")
     p.add_argument("--no_prefetch", action="store_true", help="Disable double-buffering candidates")
     p.add_argument("--output",    default="outputs/smm_run")
+    p.add_argument("--no_ifmap_trace",  action="store_true", help="Skip writing IFMAP trace CSVs")
+    p.add_argument("--no_filter_trace", action="store_true", help="Skip writing FILTER trace CSVs")
+    p.add_argument("--no_ofmap_trace",  action="store_true", help="Skip writing OFMAP trace CSVs")
     args = p.parse_args()
 
     runner = SMMScaleSimRunner(
@@ -309,6 +361,9 @@ if __name__ == "__main__":
         allow_prefetch = not args.no_prefetch,
         output_dir     = args.output,
         verbose        = True,
+        save_ifmap_trace  = not args.no_ifmap_trace,
+        save_filter_trace = not args.no_filter_trace,
+        save_ofmap_trace  = not args.no_ofmap_trace,
     )
     runner.run()
     runner.print_summary()
