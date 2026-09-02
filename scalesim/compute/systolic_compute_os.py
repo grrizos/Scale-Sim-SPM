@@ -147,24 +147,20 @@ class systolic_compute_os:
         prefetches = np.zeros((1,num_elems))
         idx = 0
 
-        pbar = tqdm(total=M*N, disable=True)
-        #print('DEBUG: Total = ' + str(num_elems) + ' Diags = ' + str(num_diags))
-
         for diag_id in range(num_diags):
             max_row_id = min(diag_id, M - 1)
             min_row_id = max(0, diag_id - N + 1)
             valid_rows = max_row_id - min_row_id + 1
 
-            for offset in range(valid_rows):
-                row_id = max_row_id - offset
-                col_id = diag_id - row_id
+            if valid_rows <= 0:
+                continue
 
-                elem = self.ifmap_prefetch_matrix[row_id][col_id]
-                prefetches[0, idx] = elem
-                idx += 1
-                pbar.update(1)
+            row_ids = np.arange(max_row_id, min_row_id - 1, -1)
+            col_ids = diag_id - row_ids
 
-        pbar.close()
+            prefetches[0, idx:idx + valid_rows] = self.ifmap_prefetch_matrix[row_ids, col_ids]
+            idx += valid_rows
+
         self.ifmap_prefetch_matrix = prefetches
 
         #t = time.time() - start_time
@@ -207,24 +203,20 @@ class systolic_compute_os:
         prefetches = np.zeros((1, num_elems))
         idx = 0
 
-        pbar = tqdm(total=M * N, disable=True)
-        # print('DEBUG: Total = ' + str(num_elems) + ' Diags = ' + str(num_diags))
-
         for diag_id in range(num_diags):
             max_row_id = min(diag_id, M - 1)
             min_row_id = max(0, diag_id - N + 1)
             valid_rows = max_row_id - min_row_id + 1
 
-            for offset in range(valid_rows):
-                row_id = max_row_id - offset
-                col_id = diag_id - row_id
+            if valid_rows <= 0:
+                continue
 
-                elem = self.filter_prefetch_matrix[row_id][col_id]
-                prefetches[0, idx] = elem
-                idx += 1
-                pbar.update(1)
+            row_ids = np.arange(max_row_id, min_row_id - 1, -1)
+            col_ids = diag_id - row_ids
 
-        pbar.close()
+            prefetches[0, idx:idx + valid_rows] = self.filter_prefetch_matrix[row_ids, col_ids]
+            idx += valid_rows
+
         self.filter_prefetch_matrix = prefetches
 
         #t = time.time() - start_time

@@ -4,7 +4,6 @@ Double buffer read memory implementation
 # TODO: Verification Pending
 import math
 import numpy as np
-from tqdm import tqdm
 
 from scalesim.memory.read_port import read_port
 
@@ -37,6 +36,10 @@ class read_buffer:
 
         # Status of the buffer
         self.hashed_buffer = {}
+        # Reverse index (addr -> [line_ids]) built once alongside hashed_buffer, since hashed_buffer
+        # is never mutated after prepare_hashed_buffer(); lets active_buffer_hit() do an O(1)-ish
+        # lookup instead of scanning every line in the active/prefetch window.
+        self.addr_to_lines = {}
         self.num_lines = 0
         self.num_active_buf_lines = 1
         self.num_prefetch_buf_lines = 1
@@ -54,6 +57,11 @@ class read_buffer:
 
         # Trace matrix
         self.trace_matrix = np.ones((1, 1))
+        # Chunks appended by new_prefetch() but not yet folded into trace_matrix -- avoids an
+        # O(n^2) blowup from concatenating onto trace_matrix on every single prefetch event.
+        # Folded in lazily by _finalize_trace_matrix() the first time something actually reads
+        # trace_matrix (get_trace_matrix/get_external_access_start_stop_cycles/print_trace).
+        self._pending_chunks = []
 
         # Flags
         self.active_buf_full_flag = False
@@ -120,6 +128,7 @@ class read_buffer:
 
         # Status of the buffer
         self.hashed_buffer = {}
+        self.addr_to_lines = {}
         self.active_buffer_set_limits = []
         self.prefetch_buffer_set_limits = []
 
@@ -134,6 +143,7 @@ class read_buffer:
 
         # Trace matrix
         self.trace_matrix = np.ones((1, 1))
+        self._pending_chunks = []
 
         # Flags
         self.active_buf_full_flag = False
@@ -151,19 +161,13 @@ class read_buffer:
 
         num_elems = fetch_matrix_np.shape[0] * fetch_matrix_np.shape[1]
         num_lines = int(math.ceil(num_elems / self.req_gen_bandwidth))
-        self.fetch_matrix = np.ones((num_lines, self.req_gen_bandwidth)) * -1
 
-        # Put stuff into the fetch matrix
-        # This is done to ensure that there is no shape mismatch
-        # Not sure if this is the optimal way to do it or not
-        for i in range(num_elems):
-            src_row = math.floor(i / fetch_matrix_np.shape[1])
-            src_col = math.floor(i % fetch_matrix_np.shape[1])
-
-            dest_row = math.floor(i / self.req_gen_bandwidth)
-            dest_col = math.floor(i % self.req_gen_bandwidth)
-
-            self.fetch_matrix[dest_row][dest_col] = fetch_matrix_np[src_row][src_col]
+        # Put stuff into the fetch matrix (C-order flatten of the input into a -1 padded,
+        # bandwidth-wide matrix) -- this is a pure relayout, equivalent to the old element-by-element
+        # copy loop but vectorized.
+        padded = np.full(num_lines * self.req_gen_bandwidth, -1, dtype=np.float64)
+        padded[:num_elems] = fetch_matrix_np.reshape(-1)
+        self.fetch_matrix = padded.reshape((num_lines, self.req_gen_bandwidth))
 
         # Once the fetch matrices are set, populate the data structure for faster lookups and
         # servicing
@@ -201,6 +205,13 @@ class read_buffer:
                     current_line = set()        # new set
 
         self.hashed_buffer[line_id] = current_line
+
+        # hashed_buffer is never mutated again after this point, so build the reverse index once
+        # here -- lets active_buffer_hit() do a lookup instead of scanning every line in its window.
+        self.addr_to_lines = {}
+        for lid, line_set in self.hashed_buffer.items():
+            for a in line_set:
+                self.addr_to_lines.setdefault(a, []).append(lid)
 
         max_num_active_buf_lines = int(math.ceil(self.active_buf_size / elems_per_set))
         max_num_prefetch_buf_lines = int(math.ceil(self.prefetch_buf_size / elems_per_set))
@@ -250,25 +261,17 @@ class read_buffer:
           # return True
           return -1, -1
         else:
+          # hashed_buffer is static (built once in prepare_hashed_buffer and never mutated), so
+          # addr_to_lines is a valid reverse index for the buffer's entire lifetime, regardless of
+          # how the active/prefetch window below later wraps around num_lines.
+          line_ids = self.addr_to_lines.get(addr)
+          if not line_ids:
+              return False
+
           if start_id < end_id:
-              for line_id in range(start_id, end_id):
-                  this_set = self.hashed_buffer[line_id]      # O(1) --> accessing hash
-                  if addr in this_set:                        # Checking in a set(), O(1) lookup
-                      return True
-
+              return any(start_id <= lid < end_id for lid in line_ids)
           else:
-              for line_id in range(start_id, self.num_lines):
-                  this_set = self.hashed_buffer[line_id]  # O(1) --> accessing hash
-                  if addr in this_set:  # Checking in a set(), O(1) lookup
-                      return True
-
-              for line_id in range(end_id):
-                  this_set = self.hashed_buffer[line_id]  # O(1) --> accessing hash
-                  if addr in this_set:  # Checking in a set(), O(1) lookup
-                      return True
-          # Fixing for ISSUE #14
-          # return True
-          return False
+              return any(lid >= start_id or lid < end_id for lid in line_ids)
 
     #
     def service_reads(self,
@@ -295,7 +298,7 @@ class read_buffer:
         out_cycles_arr = []
         offset = self.hit_latency
         if self.enable_layout_evaluation:
-          for i in tqdm(range(incoming_requests_arr_np.shape[0]), disable=True):
+          for i in range(incoming_requests_arr_np.shape[0]):
               cycle = incoming_cycles_arr[i]
               # Fixing for ISSUE #14
               # request_line = set(incoming_requests_arr_np[i]) #shaves off a few seconds
@@ -343,7 +346,7 @@ class read_buffer:
           return out_cycles_arr_np
         
         else:
-          for i in tqdm(range(incoming_requests_arr_np.shape[0]), disable=True):
+          for i in range(incoming_requests_arr_np.shape[0]):
               cycle = incoming_cycles_arr[i]
               # Fixing for ISSUE #14
               # request_line = set(incoming_requests_arr_np[i]) #shaves off a few seconds
@@ -519,7 +522,7 @@ class read_buffer:
         #       'The request and response cycles dims do not match'
 
         this_prefetch_trace = np.column_stack((response_cycles_arr, prefetch_requests))
-        self.trace_matrix = np.concatenate((self.trace_matrix, this_prefetch_trace), axis=0)
+        self._pending_chunks.append(this_prefetch_trace)
 
         # Set the line to be prefetched next
         if requested_data_size > self.active_buf_size:
@@ -528,6 +531,19 @@ class read_buffer:
             self.next_line_prefetch_idx = (num_lines + 1) % self.fetch_matrix.shape[0]
 
         # This does not need to return anything
+
+    #
+    def _finalize_trace_matrix(self):
+        """
+        Method to fold any prefetch chunks accumulated by new_prefetch() into trace_matrix. Deferred
+        (instead of concatenating on every single prefetch event) to avoid O(n^2) copying -- safe
+        because nothing reads trace_matrix until a layer's simulation has fully finished.
+        """
+        if not self._pending_chunks:
+            return
+
+        self.trace_matrix = np.concatenate([self.trace_matrix] + self._pending_chunks, axis=0)
+        self._pending_chunks = []
 
     #
     def get_trace_matrix(self):
@@ -539,6 +555,7 @@ class read_buffer:
             print('No trace has been generated yet')
             return
 
+        self._finalize_trace_matrix()
         return self.trace_matrix
 
     #
@@ -569,6 +586,7 @@ class read_buffer:
         Method to get start and stop cycles of the read buffer if trace_valid flag is set.
         """
         assert self.trace_valid, 'Traces not ready yet'
+        self._finalize_trace_matrix()
         start_cycle = np.amin(self.trace_matrix[:,0])
         end_cycle = np.amax(self.trace_matrix[:,0])
 
@@ -583,4 +601,5 @@ class read_buffer:
             print('No trace has been generated yet')
             return
 
+        self._finalize_trace_matrix()
         np.savetxt(filename, self.trace_matrix, fmt='%s', delimiter=",")

@@ -1,0 +1,941 @@
+
+Running Layer 0
+[SMM] Layer   0 (Conv1               ): policy1 (ifmap-reuse)           GLB   20.6 kB  off-chip    898.8 kB
+Total cycles: 122317
+Compute cycles: 121939
+Stall cycles: 0
+Overall utilization: 91.17%
+Mapping efficiency: 91.88%
+Average IFMAP SRAM BW: 29.174 words/cycle
+Average Filter SRAM BW: 0.077 words/cycle
+Average OFMAP SRAM BW: 31.754 words/cycle
+Average IFMAP DRAM BW: 11.601 words/cycle
+Average Filter DRAM BW: 0.085 words/cycle
+Average OFMAP DRAM BW: 31.780 words/cycle
+Saving traces: Done!
+
+Running Layer 1
+[SMM] Layer   1 (Conv2red            ): policy1 (ifmap-reuse)           GLB   11.0 kB  off-chip    396.0 kB
+Total cycles: 13100
+Compute cycles: 12919
+Stall cycles: 0
+Overall utilization: 97.10%
+Mapping efficiency: 100.00%
+Average IFMAP SRAM BW: 31.071 words/cycle
+Average Filter SRAM BW: 0.317 words/cycle
+Average OFMAP SRAM BW: 31.071 words/cycle
+Average IFMAP DRAM BW: 31.040 words/cycle
+Average Filter DRAM BW: 0.416 words/cycle
+Average OFMAP DRAM BW: 31.260 words/cycle
+Saving traces: Done!
+
+Running Layer 2
+[SMM] Layer   2 (Conv2               ): policy4 (partial-ifmap)         GLB   63.4 kB  off-chip   1242.8 kB
+Total cycles: 326667
+Compute cycles: 325079
+Stall cycles: 0
+Overall utilization: 96.88%
+Mapping efficiency: 100.00%
+Average IFMAP SRAM BW: 31.001 words/cycle
+Average Filter SRAM BW: 0.340 words/cycle
+Average OFMAP SRAM BW: 31.001 words/cycle
+Average IFMAP DRAM BW: 30.987 words/cycle
+Average Filter DRAM BW: 0.381 words/cycle
+Average OFMAP DRAM BW: 31.011 words/cycle
+Saving traces: Done!
+
+Running Layer 3
+[SMM] Layer   3 (Inc3a_1x1           ): policy1 (ifmap-reuse)           GLB   19.0 kB  off-chip    208.0 kB
+Total cycles: 10945
+Compute cycles: 10535
+Stall cycles: 0
+Overall utilization: 89.30%
+Mapping efficiency: 100.00%
+Average IFMAP SRAM BW: 28.577 words/cycle
+Average Filter SRAM BW: 1.166 words/cycle
+Average OFMAP SRAM BW: 28.577 words/cycle
+Average IFMAP DRAM BW: 28.469 words/cycle
+Average Filter DRAM BW: 1.220 words/cycle
+Average OFMAP DRAM BW: 28.790 words/cycle
+Saving traces: Done!
+
+Running Layer 4
+[SMM] Layer   4 (Inc3a_3x3red        ): policy1 (ifmap-reuse)           GLB   25.9 kB  off-chip    238.5 kB
+Total cycles: 16420
+Compute cycles: 15803
+Stall cycles: 0
+Overall utilization: 89.30%
+Mapping efficiency: 100.00%
+Average IFMAP SRAM BW: 28.576 words/cycle
+Average Filter SRAM BW: 1.166 words/cycle
+Average OFMAP SRAM BW: 28.576 words/cycle
+Average IFMAP DRAM BW: 28.475 words/cycle
+Average Filter DRAM BW: 1.187 words/cycle
+Average OFMAP DRAM BW: 28.718 words/cycle
+Saving traces: Done!
+
+Running Layer 5
+[SMM] Layer   5 (Inc3a_3x3           ): policy4 (partial-ifmap)         GLB   63.5 kB  off-chip    339.5 kB
+Total cycles: 84910
+Compute cycles: 83159
+Stall cycles: 0
+Overall utilization: 87.79%
+Mapping efficiency: 100.00%
+Average IFMAP SRAM BW: 28.094 words/cycle
+Average Filter SRAM BW: 1.330 words/cycle
+Average OFMAP SRAM BW: 28.094 words/cycle
+Average IFMAP DRAM BW: 28.038 words/cycle
+Average Filter DRAM BW: 1.314 words/cycle
+Average OFMAP DRAM BW: 28.120 words/cycle
+Saving traces: Done!
+
+Running Layer 6
+[SMM] Layer   6 (Inc3a_5x5red        ): policy1 (ifmap-reuse)           GLB    8.7 kB  off-chip    162.2 kB
+Total cycles: 5408
+Compute cycles: 5267
+Stall cycles: 0
+Overall utilization: 44.66%
+Mapping efficiency: 50.00%
+Average IFMAP SRAM BW: 28.579 words/cycle
+Average Filter SRAM BW: 0.583 words/cycle
+Average OFMAP SRAM BW: 14.290 words/cycle
+Average IFMAP DRAM BW: 28.455 words/cycle
+Average Filter DRAM BW: 0.681 words/cycle
+Average OFMAP DRAM BW: 14.505 words/cycle
+Saving traces: Done!
+
+Running Layer 7
+[SMM] Layer   7 (Inc3a_5x5           ): intra-layer                     GLB   42.8 kB  off-chip     42.8 kB
+Total cycles: 9397
+Compute cycles: 8709
+Stall cycles: 0
+Overall utilization: 82.67%
+Mapping efficiency: 96.15%
+Average IFMAP SRAM BW: 26.455 words/cycle
+Average Filter SRAM BW: 1.470 words/cycle
+Average OFMAP SRAM BW: 27.514 words/cycle
+Average IFMAP DRAM BW: 15.211 words/cycle
+Average Filter DRAM BW: 1.511 words/cycle
+Average OFMAP DRAM BW: 27.763 words/cycle
+Saving traces: Done!
+
+Running Layer 8
+[SMM] Layer   8 (Inc3a_pp            ): policy1 (ifmap-reuse)           GLB   12.1 kB  off-chip    177.5 kB
+Total cycles: 5472
+Compute cycles: 5267
+Stall cycles: 0
+Overall utilization: 89.31%
+Mapping efficiency: 100.00%
+Average IFMAP SRAM BW: 28.579 words/cycle
+Average Filter SRAM BW: 1.167 words/cycle
+Average OFMAP SRAM BW: 28.579 words/cycle
+Average IFMAP DRAM BW: 28.455 words/cycle
+Average Filter DRAM BW: 1.332 words/cycle
+Average OFMAP DRAM BW: 29.009 words/cycle
+Saving traces: Done!
+
+Running Layer 9
+[SMM] Layer   9 (Inc3b_1x1           ): policy1 (ifmap-reuse)           GLB   42.5 kB  off-chip    326.0 kB
+Total cycles: 29173
+Compute cycles: 28095
+Stall cycles: 0
+Overall utilization: 89.30%
+Mapping efficiency: 100.00%
+Average IFMAP SRAM BW: 28.575 words/cycle
+Average Filter SRAM BW: 1.166 words/cycle
+Average OFMAP SRAM BW: 28.575 words/cycle
+Average IFMAP DRAM BW: 28.443 words/cycle
+Average Filter DRAM BW: 1.159 words/cycle
+Average OFMAP DRAM BW: 28.655 words/cycle
+Saving traces: Done!
+
+Running Layer 10
+[SMM] Layer  10 (Inc3b_3x3red        ): policy1 (ifmap-reuse)           GLB   42.5 kB  off-chip    326.0 kB
+Total cycles: 29173
+Compute cycles: 28095
+Stall cycles: 0
+Overall utilization: 89.30%
+Mapping efficiency: 100.00%
+Average IFMAP SRAM BW: 28.575 words/cycle
+Average Filter SRAM BW: 1.166 words/cycle
+Average OFMAP SRAM BW: 28.575 words/cycle
+Average IFMAP DRAM BW: 28.443 words/cycle
+Average Filter DRAM BW: 1.159 words/cycle
+Average OFMAP DRAM BW: 28.655 words/cycle
+Saving traces: Done!
+
+Running Layer 11
+[SMM] Layer  11 (Inc3b_3x3           ): policy5 (partial-per-ch)        GLB   63.6 kB  off-chip    636.8 kB
+Total cycles: 166857
+Compute cycles: 166319
+Stall cycles: 0
+Overall utilization: 87.79%
+Mapping efficiency: 100.00%
+Average IFMAP SRAM BW: 28.094 words/cycle
+Average Filter SRAM BW: 1.330 words/cycle
+Average OFMAP SRAM BW: 28.094 words/cycle
+Average IFMAP DRAM BW: 28.104 words/cycle
+Average Filter DRAM BW: 1.336 words/cycle
+Average OFMAP DRAM BW: 28.206 words/cycle
+Saving traces: Done!
+
+Running Layer 12
+[SMM] Layer  12 (Inc3b_5x5red        ): policy1 (ifmap-reuse)           GLB   15.9 kB  off-chip    228.5 kB
+Total cycles: 7291
+Compute cycles: 7023
+Stall cycles: 0
+Overall utilization: 89.31%
+Mapping efficiency: 100.00%
+Average IFMAP SRAM BW: 28.578 words/cycle
+Average Filter SRAM BW: 1.166 words/cycle
+Average OFMAP SRAM BW: 28.578 words/cycle
+Average IFMAP DRAM BW: 28.232 words/cycle
+Average Filter DRAM BW: 1.274 words/cycle
+Average OFMAP DRAM BW: 28.899 words/cycle
+Saving traces: Done!
+
+Running Layer 13
+[SMM] Layer  13 (Inc3b_5x5           ): policy2 (filter-reuse)          GLB   25.8 kB  off-chip    153.5 kB
+Total cycles: 51008
+Compute cycles: 50249
+Stall cycles: 0
+Overall utilization: 85.97%
+Mapping efficiency: 100.00%
+Average IFMAP SRAM BW: 27.511 words/cycle
+Average Filter SRAM BW: 1.528 words/cycle
+Average OFMAP SRAM BW: 27.511 words/cycle
+Average IFMAP DRAM BW: 27.253 words/cycle
+Average Filter DRAM BW: 1.547 words/cycle
+Average OFMAP DRAM BW: 27.553 words/cycle
+Saving traces: Done!
+
+Running Layer 14
+[SMM] Layer  14 (Inc3b_pp            ): policy1 (ifmap-reuse)           GLB   24.8 kB  off-chip    261.0 kB
+Total cycles: 14585
+Compute cycles: 14047
+Stall cycles: 0
+Overall utilization: 89.30%
+Mapping efficiency: 100.00%
+Average IFMAP SRAM BW: 28.576 words/cycle
+Average Filter SRAM BW: 1.166 words/cycle
+Average OFMAP SRAM BW: 28.576 words/cycle
+Average IFMAP DRAM BW: 28.296 words/cycle
+Average Filter DRAM BW: 1.195 words/cycle
+Average OFMAP DRAM BW: 28.736 words/cycle
+Saving traces: Done!
+
+Running Layer 15
+[SMM] Layer  15 (Inc4a_1x1           ): policy3 (per-channel)           GLB   37.0 kB  off-chip    218.6 kB
+Total cycles: 26691
+Compute cycles: 26099
+Stall cycles: 0
+Overall utilization: 67.59%
+Mapping efficiency: 100.00%
+Average IFMAP SRAM BW: 21.628 words/cycle
+Average Filter SRAM BW: 3.531 words/cycle
+Average OFMAP SRAM BW: 21.628 words/cycle
+Average IFMAP DRAM BW: 21.682 words/cycle
+Average Filter DRAM BW: 3.566 words/cycle
+Average OFMAP DRAM BW: 21.919 words/cycle
+Saving traces: Done!
+
+Running Layer 16
+[SMM] Layer  16 (Inc4a_3x3red        ): policy1 (ifmap-reuse)           GLB   52.9 kB  off-chip    155.2 kB
+Total cycles: 14508
+Compute cycles: 13049
+Stall cycles: 0
+Overall utilization: 67.59%
+Mapping efficiency: 100.00%
+Average IFMAP SRAM BW: 21.629 words/cycle
+Average Filter SRAM BW: 3.531 words/cycle
+Average OFMAP SRAM BW: 21.629 words/cycle
+Average IFMAP DRAM BW: 21.452 words/cycle
+Average Filter DRAM BW: 3.238 words/cycle
+Average OFMAP DRAM BW: 21.760 words/cycle
+Saving traces: Done!
+
+Running Layer 17
+[SMM] Layer  17 (Inc4a_3x3           ): policy2 (filter-reuse)          GLB   19.4 kB  off-chip    223.1 kB
+Total cycles: 45537
+Compute cycles: 44981
+Stall cycles: 0
+Overall utilization: 56.18%
+Mapping efficiency: 92.86%
+Average IFMAP SRAM BW: 19.362 words/cycle
+Average Filter SRAM BW: 3.995 words/cycle
+Average OFMAP SRAM BW: 17.979 words/cycle
+Average IFMAP DRAM BW: 19.265 words/cycle
+Average Filter DRAM BW: 4.012 words/cycle
+Average OFMAP DRAM BW: 18.008 words/cycle
+Saving traces: Done!
+
+Running Layer 18
+[SMM] Layer  18 (Inc4a_5x5red        ): policy1 (ifmap-reuse)           GLB   14.3 kB  off-chip    102.4 kB
+Total cycles: 4587
+Compute cycles: 4349
+Stall cycles: 0
+Overall utilization: 33.80%
+Mapping efficiency: 50.00%
+Average IFMAP SRAM BW: 21.633 words/cycle
+Average Filter SRAM BW: 1.766 words/cycle
+Average OFMAP SRAM BW: 10.816 words/cycle
+Average IFMAP DRAM BW: 21.023 words/cycle
+Average Filter DRAM BW: 1.775 words/cycle
+Average OFMAP DRAM BW: 11.009 words/cycle
+Saving traces: Done!
+
+Running Layer 19
+[SMM] Layer  19 (Inc4a_5x5           ): intra-layer                     GLB   26.5 kB  off-chip     26.5 kB
+Total cycles: 5718
+Compute cycles: 5043
+Stall cycles: 0
+Overall utilization: 37.18%
+Mapping efficiency: 72.12%
+Average IFMAP SRAM BW: 15.864 words/cycle
+Average Filter SRAM BW: 3.807 words/cycle
+Average OFMAP SRAM BW: 12.374 words/cycle
+Average IFMAP DRAM BW: 10.715 words/cycle
+Average Filter DRAM BW: 3.502 words/cycle
+Average OFMAP DRAM BW: 12.572 words/cycle
+Saving traces: Done!
+
+Running Layer 20
+[SMM] Layer  20 (Inc4a_pp            ): policy1 (ifmap-reuse)           GLB   37.4 kB  off-chip    134.1 kB
+Total cycles: 9673
+Compute cycles: 8699
+Stall cycles: 0
+Overall utilization: 67.59%
+Mapping efficiency: 100.00%
+Average IFMAP SRAM BW: 21.630 words/cycle
+Average Filter SRAM BW: 3.531 words/cycle
+Average OFMAP SRAM BW: 21.630 words/cycle
+Average IFMAP DRAM BW: 21.345 words/cycle
+Average Filter DRAM BW: 3.267 words/cycle
+Average OFMAP DRAM BW: 21.827 words/cycle
+Saving traces: Done!
+
+Running Layer 21
+[SMM] Layer  21 (Inc4b_1x1           ): policy3 (per-channel)           GLB   30.8 kB  off-chip    208.6 kB
+Total cycles: 23693
+Compute cycles: 23199
+Stall cycles: 0
+Overall utilization: 67.59%
+Mapping efficiency: 100.00%
+Average IFMAP SRAM BW: 21.629 words/cycle
+Average Filter SRAM BW: 3.531 words/cycle
+Average OFMAP SRAM BW: 21.629 words/cycle
+Average IFMAP DRAM BW: 21.686 words/cycle
+Average Filter DRAM BW: 3.570 words/cycle
+Average OFMAP DRAM BW: 21.880 words/cycle
+Saving traces: Done!
+
+Running Layer 22
+[SMM] Layer  22 (Inc4b_3x3red        ): policy3 (per-channel)           GLB   21.6 kB  off-chip    175.4 kB
+Total cycles: 18906
+Compute cycles: 18559
+Stall cycles: 0
+Overall utilization: 59.14%
+Mapping efficiency: 87.50%
+Average IFMAP SRAM BW: 21.629 words/cycle
+Average Filter SRAM BW: 3.090 words/cycle
+Average OFMAP SRAM BW: 18.925 words/cycle
+Average IFMAP DRAM BW: 21.699 words/cycle
+Average Filter DRAM BW: 3.133 words/cycle
+Average OFMAP DRAM BW: 19.103 words/cycle
+Saving traces: Done!
+
+Running Layer 23
+[SMM] Layer  23 (Inc4b_3x3           ): policy2 (filter-reuse)          GLB   22.6 kB  off-chip    273.4 kB
+Total cycles: 53965
+Compute cycles: 53311
+Stall cycles: 0
+Overall utilization: 59.56%
+Mapping efficiency: 98.44%
+Average IFMAP SRAM BW: 19.059 words/cycle
+Average Filter SRAM BW: 4.235 words/cycle
+Average OFMAP SRAM BW: 19.362 words/cycle
+Average IFMAP DRAM BW: 19.031 words/cycle
+Average Filter DRAM BW: 4.250 words/cycle
+Average OFMAP DRAM BW: 19.388 words/cycle
+Saving traces: Done!
+
+Running Layer 24
+[SMM] Layer  24 (Inc4b_5x5red        ): policy1 (ifmap-reuse)           GLB   19.3 kB  off-chip    114.6 kB
+Total cycles: 5022
+Compute cycles: 4639
+Stall cycles: 0
+Overall utilization: 50.70%
+Mapping efficiency: 75.00%
+Average IFMAP SRAM BW: 21.632 words/cycle
+Average Filter SRAM BW: 2.649 words/cycle
+Average OFMAP SRAM BW: 16.224 words/cycle
+Average IFMAP DRAM BW: 21.105 words/cycle
+Average Filter DRAM BW: 2.580 words/cycle
+Average OFMAP DRAM BW: 16.502 words/cycle
+Saving traces: Done!
+
+Running Layer 25
+[SMM] Layer  25 (Inc4b_5x5           ): intra-layer                     GLB   48.3 kB  off-chip     48.3 kB
+Total cycles: 8671
+Compute cycles: 7371
+Stall cycles: 0
+Overall utilization: 50.88%
+Mapping efficiency: 98.68%
+Average IFMAP SRAM BW: 16.280 words/cycle
+Average Filter SRAM BW: 5.210 words/cycle
+Average OFMAP SRAM BW: 16.497 words/cycle
+Average IFMAP DRAM BW: 13.627 words/cycle
+Average Filter DRAM BW: 4.565 words/cycle
+Average OFMAP DRAM BW: 16.858 words/cycle
+Saving traces: Done!
+
+Running Layer 26
+[SMM] Layer  26 (Inc4b_pp            ): policy1 (ifmap-reuse)           GLB   39.9 kB  off-chip    142.2 kB
+Total cycles: 10315
+Compute cycles: 9279
+Stall cycles: 0
+Overall utilization: 67.59%
+Mapping efficiency: 100.00%
+Average IFMAP SRAM BW: 21.630 words/cycle
+Average Filter SRAM BW: 3.531 words/cycle
+Average OFMAP SRAM BW: 21.630 words/cycle
+Average IFMAP DRAM BW: 21.431 words/cycle
+Average Filter DRAM BW: 3.263 words/cycle
+Average OFMAP DRAM BW: 21.814 words/cycle
+Saving traces: Done!
+
+Running Layer 27
+[SMM] Layer  27 (Inc4c_1x1           ): policy3 (per-channel)           GLB   24.6 kB  off-chip    186.5 kB
+Total cycles: 18955
+Compute cycles: 18559
+Stall cycles: 0
+Overall utilization: 67.59%
+Mapping efficiency: 100.00%
+Average IFMAP SRAM BW: 21.629 words/cycle
+Average Filter SRAM BW: 3.531 words/cycle
+Average OFMAP SRAM BW: 21.629 words/cycle
+Average IFMAP DRAM BW: 21.699 words/cycle
+Average Filter DRAM BW: 3.580 words/cycle
+Average OFMAP DRAM BW: 21.926 words/cycle
+Saving traces: Done!
+
+Running Layer 28
+[SMM] Layer  28 (Inc4c_3x3red        ): policy3 (per-channel)           GLB   24.6 kB  off-chip    186.5 kB
+Total cycles: 18955
+Compute cycles: 18559
+Stall cycles: 0
+Overall utilization: 67.59%
+Mapping efficiency: 100.00%
+Average IFMAP SRAM BW: 21.629 words/cycle
+Average Filter SRAM BW: 3.531 words/cycle
+Average OFMAP SRAM BW: 21.629 words/cycle
+Average IFMAP DRAM BW: 21.699 words/cycle
+Average Filter DRAM BW: 3.580 words/cycle
+Average OFMAP DRAM BW: 21.926 words/cycle
+Saving traces: Done!
+
+Running Layer 29
+[SMM] Layer  29 (Inc4c_3x3           ): policy2 (filter-reuse)          GLB   25.8 kB  off-chip    348.5 kB
+Total cycles: 69294
+Compute cycles: 68543
+Stall cycles: 0
+Overall utilization: 60.51%
+Mapping efficiency: 100.00%
+Average IFMAP SRAM BW: 19.362 words/cycle
+Average Filter SRAM BW: 4.303 words/cycle
+Average OFMAP SRAM BW: 19.362 words/cycle
+Average IFMAP DRAM BW: 19.183 words/cycle
+Average Filter DRAM BW: 4.313 words/cycle
+Average OFMAP DRAM BW: 19.382 words/cycle
+Saving traces: Done!
+
+Running Layer 30
+[SMM] Layer  30 (Inc4c_5x5red        ): policy1 (ifmap-reuse)           GLB   19.3 kB  off-chip    114.6 kB
+Total cycles: 5022
+Compute cycles: 4639
+Stall cycles: 0
+Overall utilization: 50.70%
+Mapping efficiency: 75.00%
+Average IFMAP SRAM BW: 21.632 words/cycle
+Average Filter SRAM BW: 2.649 words/cycle
+Average OFMAP SRAM BW: 16.224 words/cycle
+Average IFMAP DRAM BW: 21.105 words/cycle
+Average Filter DRAM BW: 2.580 words/cycle
+Average OFMAP DRAM BW: 16.502 words/cycle
+Saving traces: Done!
+
+Running Layer 31
+[SMM] Layer  31 (Inc4c_5x5           ): intra-layer                     GLB   18.3 kB  off-chip     18.3 kB
+Total cycles: 890
+Compute cycles: 579
+Stall cycles: 0
+Overall utilization: 50.78%
+Mapping efficiency: 75.00%
+Average IFMAP SRAM BW: 16.249 words/cycle
+Average Filter SRAM BW: 2.653 words/cycle
+Average OFMAP SRAM BW: 21.665 words/cycle
+Average IFMAP DRAM BW: 14.385 words/cycle
+Average Filter DRAM BW: 4.255 words/cycle
+Average OFMAP DRAM BW: 29.728 words/cycle
+Saving traces: Done!
+
+Running Layer 32
+[SMM] Layer  32 (Inc4c_pp            ): policy1 (ifmap-reuse)           GLB   39.9 kB  off-chip    142.2 kB
+Total cycles: 10315
+Compute cycles: 9279
+Stall cycles: 0
+Overall utilization: 67.59%
+Mapping efficiency: 100.00%
+Average IFMAP SRAM BW: 21.630 words/cycle
+Average Filter SRAM BW: 3.531 words/cycle
+Average OFMAP SRAM BW: 21.630 words/cycle
+Average IFMAP DRAM BW: 21.431 words/cycle
+Average Filter DRAM BW: 3.263 words/cycle
+Average OFMAP DRAM BW: 21.814 words/cycle
+Saving traces: Done!
+
+Running Layer 33
+[SMM] Layer  33 (Inc4d_1x1           ): policy3 (per-channel)           GLB   21.6 kB  off-chip    175.4 kB
+Total cycles: 18906
+Compute cycles: 18559
+Stall cycles: 0
+Overall utilization: 59.14%
+Mapping efficiency: 87.50%
+Average IFMAP SRAM BW: 21.629 words/cycle
+Average Filter SRAM BW: 3.090 words/cycle
+Average OFMAP SRAM BW: 18.925 words/cycle
+Average IFMAP DRAM BW: 21.699 words/cycle
+Average Filter DRAM BW: 3.133 words/cycle
+Average OFMAP DRAM BW: 19.103 words/cycle
+Saving traces: Done!
+
+Running Layer 34
+[SMM] Layer  34 (Inc4d_3x3red        ): policy3 (per-channel)           GLB   27.7 kB  off-chip    197.6 kB
+Total cycles: 23644
+Compute cycles: 23199
+Stall cycles: 0
+Overall utilization: 60.83%
+Mapping efficiency: 90.00%
+Average IFMAP SRAM BW: 21.629 words/cycle
+Average Filter SRAM BW: 3.178 words/cycle
+Average OFMAP SRAM BW: 19.466 words/cycle
+Average IFMAP DRAM BW: 21.686 words/cycle
+Average Filter DRAM BW: 3.213 words/cycle
+Average OFMAP DRAM BW: 19.692 words/cycle
+Saving traces: Done!
+
+Running Layer 35
+[SMM] Layer  35 (Inc4d_3x3           ): policy2 (filter-reuse)          GLB   29.0 kB  off-chip    432.6 kB
+Total cycles: 88672
+Compute cycles: 87821
+Stall cycles: 0
+Overall utilization: 59.77%
+Mapping efficiency: 98.78%
+Average IFMAP SRAM BW: 19.125 words/cycle
+Average Filter SRAM BW: 4.250 words/cycle
+Average OFMAP SRAM BW: 19.362 words/cycle
+Average IFMAP DRAM BW: 18.976 words/cycle
+Average Filter DRAM BW: 4.258 words/cycle
+Average OFMAP DRAM BW: 19.377 words/cycle
+Saving traces: Done!
+
+Running Layer 36
+[SMM] Layer  36 (Inc4d_5x5red        ): policy1 (ifmap-reuse)           GLB   23.4 kB  off-chip    120.1 kB
+Total cycles: 5156
+Compute cycles: 4639
+Stall cycles: 0
+Overall utilization: 67.60%
+Mapping efficiency: 100.00%
+Average IFMAP SRAM BW: 21.632 words/cycle
+Average Filter SRAM BW: 3.532 words/cycle
+Average OFMAP SRAM BW: 21.632 words/cycle
+Average IFMAP DRAM BW: 21.105 words/cycle
+Average Filter DRAM BW: 3.350 words/cycle
+Average OFMAP DRAM BW: 21.995 words/cycle
+Saving traces: Done!
+
+Running Layer 37
+[SMM] Layer  37 (Inc4d_5x5           ): intra-layer                     GLB   62.4 kB  off-chip     62.4 kB
+Total cycles: 11399
+Compute cycles: 9699
+Stall cycles: 0
+Overall utilization: 51.55%
+Mapping efficiency: 100.00%
+Average IFMAP SRAM BW: 16.497 words/cycle
+Average Filter SRAM BW: 5.279 words/cycle
+Average OFMAP SRAM BW: 16.497 words/cycle
+Average IFMAP DRAM BW: 16.271 words/cycle
+Average Filter DRAM BW: 4.596 words/cycle
+Average OFMAP DRAM BW: 16.769 words/cycle
+Saving traces: Done!
+
+Running Layer 38
+[SMM] Layer  38 (Inc4d_pp            ): policy1 (ifmap-reuse)           GLB   39.9 kB  off-chip    142.2 kB
+Total cycles: 10315
+Compute cycles: 9279
+Stall cycles: 0
+Overall utilization: 67.59%
+Mapping efficiency: 100.00%
+Average IFMAP SRAM BW: 21.630 words/cycle
+Average Filter SRAM BW: 3.531 words/cycle
+Average OFMAP SRAM BW: 21.630 words/cycle
+Average IFMAP DRAM BW: 21.431 words/cycle
+Average Filter DRAM BW: 3.263 words/cycle
+Average OFMAP DRAM BW: 21.814 words/cycle
+Saving traces: Done!
+
+Running Layer 39
+[SMM] Layer  39 (Inc4e_1x1           ): policy3 (per-channel)           GLB   49.3 kB  off-chip    282.1 kB
+Total cycles: 40230
+Compute cycles: 39439
+Stall cycles: 0
+Overall utilization: 65.60%
+Mapping efficiency: 97.06%
+Average IFMAP SRAM BW: 20.992 words/cycle
+Average Filter SRAM BW: 3.427 words/cycle
+Average OFMAP SRAM BW: 21.628 words/cycle
+Average IFMAP DRAM BW: 21.032 words/cycle
+Average Filter DRAM BW: 3.449 words/cycle
+Average OFMAP DRAM BW: 21.872 words/cycle
+Saving traces: Done!
+
+Running Layer 40
+[SMM] Layer  40 (Inc4e_3x3red        ): policy3 (per-channel)           GLB   30.8 kB  off-chip    214.2 kB
+Total cycles: 25143
+Compute cycles: 24649
+Stall cycles: 0
+Overall utilization: 65.60%
+Mapping efficiency: 97.06%
+Average IFMAP SRAM BW: 20.992 words/cycle
+Average Filter SRAM BW: 3.427 words/cycle
+Average OFMAP SRAM BW: 21.628 words/cycle
+Average IFMAP DRAM BW: 21.062 words/cycle
+Average Filter DRAM BW: 3.463 words/cycle
+Average OFMAP DRAM BW: 21.865 words/cycle
+Saving traces: Done!
+
+Running Layer 41
+[SMM] Layer  41 (Inc4e_3x3           ): policy2 (filter-reuse)          GLB   32.2 kB  off-chip    525.6 kB
+Total cycles: 108047
+Compute cycles: 107099
+Stall cycles: 0
+Overall utilization: 60.50%
+Mapping efficiency: 100.00%
+Average IFMAP SRAM BW: 19.362 words/cycle
+Average Filter SRAM BW: 4.303 words/cycle
+Average OFMAP SRAM BW: 19.362 words/cycle
+Average IFMAP DRAM BW: 19.260 words/cycle
+Average Filter DRAM BW: 4.309 words/cycle
+Average OFMAP DRAM BW: 19.375 words/cycle
+Saving traces: Done!
+
+Running Layer 42
+[SMM] Layer  42 (Inc4e_5x5red        ): policy1 (ifmap-reuse)           GLB   24.2 kB  off-chip    123.7 kB
+Total cycles: 5461
+Compute cycles: 4929
+Stall cycles: 0
+Overall utilization: 65.61%
+Mapping efficiency: 97.06%
+Average IFMAP SRAM BW: 20.996 words/cycle
+Average Filter SRAM BW: 3.428 words/cycle
+Average OFMAP SRAM BW: 21.632 words/cycle
+Average IFMAP DRAM BW: 20.727 words/cycle
+Average Filter DRAM BW: 3.252 words/cycle
+Average OFMAP DRAM BW: 21.973 words/cycle
+Saving traces: Done!
+
+Running Layer 43
+[SMM] Layer  43 (Inc4e_5x5           ): policy2 (filter-reuse)          GLB    7.0 kB  off-chip    118.6 kB
+Total cycles: 19561
+Compute cycles: 19399
+Stall cycles: 0
+Overall utilization: 51.55%
+Mapping efficiency: 100.00%
+Average IFMAP SRAM BW: 16.496 words/cycle
+Average Filter SRAM BW: 5.279 words/cycle
+Average OFMAP SRAM BW: 16.496 words/cycle
+Average IFMAP DRAM BW: 16.357 words/cycle
+Average Filter DRAM BW: 5.316 words/cycle
+Average OFMAP DRAM BW: 16.556 words/cycle
+Saving traces: Done!
+
+Running Layer 44
+[SMM] Layer  44 (Inc4e_pp            ): policy3 (per-channel)           GLB   24.6 kB  off-chip    191.6 kB
+Total cycles: 20115
+Compute cycles: 19719
+Stall cycles: 0
+Overall utilization: 65.60%
+Mapping efficiency: 97.06%
+Average IFMAP SRAM BW: 20.993 words/cycle
+Average Filter SRAM BW: 3.427 words/cycle
+Average OFMAP SRAM BW: 21.629 words/cycle
+Average IFMAP DRAM BW: 21.072 words/cycle
+Average Filter DRAM BW: 3.472 words/cycle
+Average OFMAP DRAM BW: 21.908 words/cycle
+Saving traces: Done!
+
+Running Layer 45
+[SMM] Layer  45 (Inc5a_1x1           ): policy2 (filter-reuse)          GLB   40.7 kB  off-chip    260.1 kB
+Total cycles: 30983
+Compute cycles: 29743
+Stall cycles: 0
+Overall utilization: 34.27%
+Mapping efficiency: 100.00%
+Average IFMAP SRAM BW: 10.965 words/cycle
+Average Filter SRAM BW: 7.161 words/cycle
+Average OFMAP SRAM BW: 10.965 words/cycle
+Average IFMAP DRAM BW: 10.547 words/cycle
+Average Filter DRAM BW: 7.183 words/cycle
+Average OFMAP DRAM BW: 10.991 words/cycle
+Saving traces: Done!
+
+Running Layer 46
+[SMM] Layer  46 (Inc5a_3x3red        ): policy2 (filter-reuse)          GLB   26.0 kB  off-chip    116.2 kB
+Total cycles: 12935
+Compute cycles: 12154
+Stall cycles: 0
+Overall utilization: 33.51%
+Mapping efficiency: 97.79%
+Average IFMAP SRAM BW: 10.724 words/cycle
+Average Filter SRAM BW: 7.003 words/cycle
+Average OFMAP SRAM BW: 10.966 words/cycle
+Average IFMAP DRAM BW: 10.129 words/cycle
+Average Filter DRAM BW: 7.059 words/cycle
+Average OFMAP DRAM BW: 11.028 words/cycle
+Saving traces: Done!
+
+Running Layer 47
+[SMM] Layer  47 (Inc5a_3x3           ): policy2 (filter-reuse)          GLB    9.1 kB  off-chip    465.5 kB
+Total cycles: 53761
+Compute cycles: 53549
+Stall cycles: 0
+Overall utilization: 21.01%
+Mapping efficiency: 100.00%
+Average IFMAP SRAM BW: 6.723 words/cycle
+Average Filter SRAM BW: 8.605 words/cycle
+Average OFMAP SRAM BW: 6.723 words/cycle
+Average IFMAP DRAM BW: 6.718 words/cycle
+Average Filter DRAM BW: 8.613 words/cycle
+Average OFMAP DRAM BW: 6.731 words/cycle
+Saving traces: Done!
+
+Running Layer 48
+[SMM] Layer  48 (Inc5a_5x5red        ): policy1 (ifmap-reuse)           GLB   31.9 kB  off-chip     67.3 kB
+Total cycles: 4551
+Compute cycles: 3717
+Stall cycles: 0
+Overall utilization: 34.27%
+Mapping efficiency: 100.00%
+Average IFMAP SRAM BW: 10.968 words/cycle
+Average Filter SRAM BW: 7.163 words/cycle
+Average OFMAP SRAM BW: 10.968 words/cycle
+Average IFMAP DRAM BW: 10.669 words/cycle
+Average Filter DRAM BW: 5.996 words/cycle
+Average OFMAP DRAM BW: 11.191 words/cycle
+Saving traces: Done!
+
+Running Layer 49
+[SMM] Layer  49 (Inc5a_5x5           ): policy2 (filter-reuse)          GLB    2.3 kB  off-chip    102.7 kB
+Total cycles: 10324
+Compute cycles: 10299
+Stall cycles: 0
+Overall utilization: 8.74%
+Mapping efficiency: 100.00%
+Average IFMAP SRAM BW: 2.796 words/cycle
+Average Filter SRAM BW: 9.943 words/cycle
+Average OFMAP SRAM BW: 2.796 words/cycle
+Average IFMAP DRAM BW: 1.380 words/cycle
+Average Filter DRAM BW: 9.985 words/cycle
+Average OFMAP DRAM BW: 2.814 words/cycle
+Saving traces: Done!
+
+Running Layer 50
+[SMM] Layer  50 (Inc5a_pp            ): policy2 (filter-reuse)          GLB   40.7 kB  off-chip    149.9 kB
+Total cycles: 16111
+Compute cycles: 14871
+Stall cycles: 0
+Overall utilization: 34.27%
+Mapping efficiency: 100.00%
+Average IFMAP SRAM BW: 10.966 words/cycle
+Average Filter SRAM BW: 7.161 words/cycle
+Average OFMAP SRAM BW: 10.966 words/cycle
+Average IFMAP DRAM BW: 10.154 words/cycle
+Average Filter DRAM BW: 7.203 words/cycle
+Average OFMAP DRAM BW: 11.016 words/cycle
+Saving traces: Done!
+
+Running Layer 51
+[SMM] Layer  51 (Inc5b_1x1           ): policy2 (filter-reuse)          GLB   40.7 kB  off-chip    370.2 kB
+Total cycles: 45855
+Compute cycles: 44615
+Stall cycles: 0
+Overall utilization: 34.27%
+Mapping efficiency: 100.00%
+Average IFMAP SRAM BW: 10.965 words/cycle
+Average Filter SRAM BW: 7.161 words/cycle
+Average OFMAP SRAM BW: 10.965 words/cycle
+Average IFMAP DRAM BW: 10.685 words/cycle
+Average Filter DRAM BW: 7.176 words/cycle
+Average OFMAP DRAM BW: 10.982 words/cycle
+Saving traces: Done!
+
+Running Layer 52
+[SMM] Layer  52 (Inc5b_3x3red        ): policy2 (filter-reuse)          GLB   40.7 kB  off-chip    205.0 kB
+Total cycles: 23547
+Compute cycles: 22307
+Stall cycles: 0
+Overall utilization: 34.27%
+Mapping efficiency: 100.00%
+Average IFMAP SRAM BW: 10.966 words/cycle
+Average Filter SRAM BW: 7.161 words/cycle
+Average OFMAP SRAM BW: 10.966 words/cycle
+Average IFMAP DRAM BW: 10.413 words/cycle
+Average Filter DRAM BW: 7.190 words/cycle
+Average OFMAP DRAM BW: 10.999 words/cycle
+Saving traces: Done!
+
+Running Layer 53
+[SMM] Layer  53 (Inc5b_3x3           ): policy2 (filter-reuse)          GLB   10.9 kB  off-chip    666.6 kB
+Total cycles: 77373
+Compute cycles: 77111
+Stall cycles: 0
+Overall utilization: 21.01%
+Mapping efficiency: 100.00%
+Average IFMAP SRAM BW: 6.723 words/cycle
+Average Filter SRAM BW: 8.605 words/cycle
+Average OFMAP SRAM BW: 6.723 words/cycle
+Average IFMAP DRAM BW: 6.716 words/cycle
+Average Filter DRAM BW: 8.611 words/cycle
+Average OFMAP DRAM BW: 6.729 words/cycle
+Saving traces: Done!
+
+Running Layer 54
+[SMM] Layer  54 (Inc5b_5x5red        ): policy1 (ifmap-reuse)           GLB   45.0 kB  off-chip     81.1 kB
+Total cycles: 8686
+Compute cycles: 7435
+Stall cycles: 0
+Overall utilization: 25.70%
+Mapping efficiency: 75.00%
+Average IFMAP SRAM BW: 10.967 words/cycle
+Average Filter SRAM BW: 5.371 words/cycle
+Average OFMAP SRAM BW: 8.225 words/cycle
+Average IFMAP DRAM BW: 10.827 words/cycle
+Average Filter DRAM BW: 4.659 words/cycle
+Average OFMAP DRAM BW: 8.309 words/cycle
+Saving traces: Done!
+
+Running Layer 55
+[SMM] Layer  55 (Inc5b_5x5           ): policy2 (filter-reuse)          GLB    2.3 kB  off-chip    102.7 kB
+Total cycles: 10324
+Compute cycles: 10299
+Stall cycles: 0
+Overall utilization: 8.74%
+Mapping efficiency: 100.00%
+Average IFMAP SRAM BW: 2.796 words/cycle
+Average Filter SRAM BW: 9.943 words/cycle
+Average OFMAP SRAM BW: 2.796 words/cycle
+Average IFMAP DRAM BW: 1.380 words/cycle
+Average Filter DRAM BW: 9.985 words/cycle
+Average OFMAP DRAM BW: 2.814 words/cycle
+Saving traces: Done!
+
+Running Layer 56
+[SMM] Layer  56 (Inc5b_pp            ): policy2 (filter-reuse)          GLB   40.7 kB  off-chip    149.9 kB
+Total cycles: 16111
+Compute cycles: 14871
+Stall cycles: 0
+Overall utilization: 34.27%
+Mapping efficiency: 100.00%
+Average IFMAP SRAM BW: 10.966 words/cycle
+Average Filter SRAM BW: 7.161 words/cycle
+Average OFMAP SRAM BW: 10.966 words/cycle
+Average IFMAP DRAM BW: 10.154 words/cycle
+Average Filter DRAM BW: 7.203 words/cycle
+Average OFMAP DRAM BW: 11.016 words/cycle
+Saving traces: Done!
+
+Running Layer 57
+[SMM] Layer  57 (FC6                 ): policy2 (filter-reuse)          GLB    2.0 kB  off-chip   1002.0 kB
+Total cycles: 97287
+Compute cycles: 97279
+Stall cycles: 0
+Overall utilization: 1.03%
+Mapping efficiency: 97.66%
+Average IFMAP SRAM BW: 0.337 words/cycle
+Average Filter SRAM BW: 10.526 words/cycle
+Average OFMAP SRAM BW: 0.329 words/cycle
+Average IFMAP DRAM BW: 0.340 words/cycle
+Average Filter DRAM BW: 10.530 words/cycle
+Average OFMAP DRAM BW: 0.329 words/cycle
+Saving traces: Done!
+
+[SMM] Simulation complete. Traces in: outputs/smm_run
+
+==========================================================================================
+Layer                  Policy                              n  pf   GLB(kB)  OffChip(kB)    Lat(Mc)
+------------------------------------------------------------------------------------------
+Conv1                  policy1 (ifmap-reuse)               -   -      20.6        898.8      0.167  ✓
+Conv2red               policy1 (ifmap-reuse)               -   -      11.0        396.0      0.038  ✓
+Conv2                  policy4 (partial-ifmap)            86   -      63.4       1242.8      0.394  ✓
+Inc3a_1x1              policy1 (ifmap-reuse)               -   -      19.0        208.0      0.023  ✓
+Inc3a_3x3red           policy1 (ifmap-reuse)               -   -      25.9        238.5      0.029  ✓
+Inc3a_3x3              policy4 (partial-ifmap)            64   -      63.5        339.5      0.095  ✓
+Inc3a_5x5red           policy1 (ifmap-reuse)               -   -       8.7        162.2      0.013  ✓
+Inc3a_5x5              intra-layer                         -   -      42.8         42.8      0.010  ✓
+Inc3a_pp               policy1 (ifmap-reuse)               -   -      12.1        177.5      0.016  ✓
+Inc3b_1x1              policy1 (ifmap-reuse)               -   -      42.5        326.0      0.046  ✓
+Inc3b_3x3red           policy1 (ifmap-reuse)               -   -      42.5        326.0      0.046  ✓
+Inc3b_3x3              policy5 (partial-per-ch)           95   -      63.6        636.8      0.187  ✓
+Inc3b_5x5red           policy1 (ifmap-reuse)               -   -      15.9        228.5      0.021  ✓
+Inc3b_5x5              policy2 (filter-reuse)              -   -      25.8        153.5      0.053  ✓
+Inc3b_pp               policy1 (ifmap-reuse)               -   -      24.8        261.0      0.029  ✓
+Inc4a_1x1              policy3 (per-channel)               -   -      37.0        218.6      0.032  ✓
+Inc4a_3x3red           policy1 (ifmap-reuse)               -   -      52.9        155.2      0.019  ✓
+Inc4a_3x3              policy2 (filter-reuse)              -   -      19.4        223.1      0.040  ✓
+Inc4a_5x5red           policy1 (ifmap-reuse)               -   -      14.3        102.4      0.008  ✓
+Inc4a_5x5              intra-layer                         -   -      26.5         26.5      0.004  ✓
+Inc4a_pp               policy1 (ifmap-reuse)               -   -      37.4        134.1      0.014  ✓
+Inc4b_1x1              policy3 (per-channel)               -   -      30.8        208.6      0.029  ✓
+Inc4b_3x3red           policy3 (per-channel)               -   -      21.6        175.4      0.022  ✓
+Inc4b_3x3              policy2 (filter-reuse)              -   -      22.6        273.4      0.049  ✓
+Inc4b_5x5red           policy1 (ifmap-reuse)               -   -      19.3        114.6      0.010  ✓
+Inc4b_5x5              intra-layer                         -   -      48.3         48.3      0.007  ✓
+Inc4b_pp               policy1 (ifmap-reuse)               -   -      39.9        142.2      0.015  ✓
+Inc4c_1x1              policy3 (per-channel)               -   -      24.6        186.5      0.024  ✓
+Inc4c_3x3red           policy3 (per-channel)               -   -      24.6        186.5      0.024  ✓
+Inc4c_3x3              policy2 (filter-reuse)              -   -      25.8        348.5      0.064  ✓
+Inc4c_5x5red           policy1 (ifmap-reuse)               -   -      19.3        114.6      0.010  ✓
+Inc4c_5x5              intra-layer                         -   -      18.3         18.3      0.001  ✓
+Inc4c_pp               policy1 (ifmap-reuse)               -   -      39.9        142.2      0.015  ✓
+Inc4d_1x1              policy3 (per-channel)               -   -      21.6        175.4      0.022  ✓
+Inc4d_3x3red           policy3 (per-channel)               -   -      27.7        197.6      0.027  ✓
+Inc4d_3x3              policy2 (filter-reuse)              -   -      29.0        432.6      0.080  ✓
+Inc4d_5x5red           policy1 (ifmap-reuse)               -   -      23.4        120.1      0.011  ✓
+Inc4d_5x5              intra-layer                         -   -      62.4         62.4      0.009  ✓
+Inc4d_pp               policy1 (ifmap-reuse)               -   -      39.9        142.2      0.015  ✓
+Inc4e_1x1              policy3 (per-channel)               -   -      49.3        282.1      0.044  ✓
+Inc4e_3x3red           policy3 (per-channel)               -   -      30.8        214.2      0.030  ✓
+Inc4e_3x3              policy2 (filter-reuse)              -   -      32.2        525.6      0.098  ✓
+Inc4e_5x5red           policy1 (ifmap-reuse)               -   -      24.2        123.7      0.011  ✓
+Inc4e_5x5              policy2 (filter-reuse)              -   -       7.0        118.6      0.018  ✓
+Inc4e_pp               policy3 (per-channel)               -   -      24.6        191.6      0.025  ✓
+Inc5a_1x1              policy2 (filter-reuse)              -   -      40.7        260.1      0.027  ✓
+Inc5a_3x3red           policy2 (filter-reuse)              -   -      26.0        116.2      0.012  ✓
+Inc5a_3x3              policy2 (filter-reuse)              -   -       9.1        465.5      0.041  ✓
+Inc5a_5x5red           policy1 (ifmap-reuse)               -   -      31.9         67.3      0.006  ✓
+Inc5a_5x5              policy2 (filter-reuse)              -   -       2.3        102.7      0.007  ✓
+Inc5a_pp               policy2 (filter-reuse)              -   -      40.7        149.9      0.015  ✓
+Inc5b_1x1              policy2 (filter-reuse)              -   -      40.7        370.2      0.039  ✓
+Inc5b_3x3red           policy2 (filter-reuse)              -   -      40.7        205.0      0.021  ✓
+Inc5b_3x3              policy2 (filter-reuse)              -   -      10.9        666.6      0.059  ✓
+Inc5b_5x5red           policy1 (ifmap-reuse)               -   -      45.0         81.1      0.007  ✓
+Inc5b_5x5              policy2 (filter-reuse)              -   -       2.3        102.7      0.007  ✓
+Inc5b_pp               policy2 (filter-reuse)              -   -      40.7        149.9      0.015  ✓
+FC6                    policy2 (filter-reuse)              -   -       2.0       1002.0      0.065  ✓
+==========================================================================================
+TOTAL                                                                            14.44M      2.265M
+
+
+real    4m25,538s
+user    4m2,571s
+sys     0m8,190s

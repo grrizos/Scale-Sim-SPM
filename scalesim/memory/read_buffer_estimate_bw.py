@@ -38,6 +38,11 @@ class ReadBufferEstimateBw:
 
         # Trace matrix
         self.trace_matrix = np.ones((1, 1))
+        # Chunks appended by prefetch() but not yet folded into trace_matrix -- avoids an O(n^2)
+        # blowup from concatenating (plus width-padding) onto trace_matrix on every prefetch event.
+        # Folded in lazily by _finalize_trace_matrix() the first time something actually reads
+        # trace_matrix (get_trace_matrix/get_external_access_start_stop_cycles/print_trace).
+        self._pending_chunks = []
 
         # Tracking variables
         self.num_items_per_set = -1
@@ -54,6 +59,9 @@ class ReadBufferEstimateBw:
         # Internal data structures
         self.current_set = set()
         self.list_of_sets = []
+        # Maps an address to the id of the most recently finalized set that contains it, so
+        # check_hit() can do an O(1) lookup instead of scanning list_of_sets.
+        self.addr_last_set_id = {}
         self.num_sets_active_buffer = 1
         self.num_sets_prefetch_buffer = 1
 
@@ -91,7 +99,12 @@ class ReadBufferEstimateBw:
         self.prefetch_buf_size = self.total_size_elems - self.active_buf_size
 
         #
-        self.num_items_per_set = math.floor(self.total_size_elems / 100)
+        # Floor of 1: a buffer small enough that total_size_elems < 100 (e.g. an SMM policy that
+        # picks a very small on-chip allocation) would otherwise floor this to 0, which means no
+        # chunk can ever "fill up" and finalize during the layer -- everything piles into one
+        # never-closed chunk, and the end-of-layer cleanup (complete_all_prefetches) crashes trying
+        # to reshape that pile using cycle counts computed for the empty-chunk case.
+        self.num_items_per_set = max(1, math.floor(self.total_size_elems / 100))
         self.num_sets_active_buffer = int(self.active_buf_frac * 100)
         self.num_sets_prefetch_buffer = 100 - self.num_sets_active_buffer
 
@@ -152,6 +165,8 @@ class ReadBufferEstimateBw:
 
             if self.elems_current_set == self.num_items_per_set:
                 self.list_of_sets += [self.current_set]
+                for a in self.current_set:
+                    self.addr_last_set_id[a] = self.current_set_id
                 self.current_set = set()
                 self.elems_current_set = 0
                 self.current_set_id += 1
@@ -209,11 +224,8 @@ class ReadBufferEstimateBw:
         if start_set_idx == end_set_idx:
             return False
 
-        for idx in range(start_set_idx, end_set_idx):
-            if addr in self.list_of_sets[idx]:
-                return True
-
-        return False
+        last_set_id = self.addr_last_set_id.get(addr, -1)
+        return start_set_idx <= last_set_id < end_set_idx
 
     #
     def complete_all_prefetches(self):
@@ -299,21 +311,39 @@ class ReadBufferEstimateBw:
         this_prefetch_traces = np.concatenate((response_cycles_arr, prefetch_requests), axis=1)
 
         if not self.trace_valid:
-            self.trace_matrix = this_prefetch_traces
             self.trace_valid = True
 
-        else:
-            del_cols = self.trace_matrix.shape[1] - this_prefetch_traces.shape[1]
-            if del_cols > 0:
-                empty_cols = np.ones((this_prefetch_traces.shape[0], del_cols))
-                this_prefetch_traces = np.concatenate((this_prefetch_traces, empty_cols), axis=1)
+        self._pending_chunks.append(this_prefetch_traces)
 
-            elif del_cols < 0:
-                del_cols = int(-1 * del_cols)
-                empty_cols = np.ones((self.trace_matrix.shape[0], del_cols))
-                self.trace_matrix = np.concatenate((self.trace_matrix, empty_cols), axis=1)
+    #
+    def _finalize_trace_matrix(self):
+        """
+        Method to fold any prefetch chunks accumulated by prefetch() into trace_matrix. Deferred
+        (instead of concatenating -- with column-width padding -- on every single prefetch event)
+        to avoid O(n^2) copying, safe because nothing reads trace_matrix until a layer's simulation
+        has fully finished.
 
-            self.trace_matrix = np.concatenate((self.trace_matrix, this_prefetch_traces), axis=0)
+        Chunk width can vary between calls (prefetch_bandwidth is recomputed per call), so the
+        original incremental logic padded whichever side was narrower with columns of value 1 to
+        match the other. That padding is monotonic -- any time a wider chunk arrives, everything
+        accumulated so far gets retroactively padded to match -- so the end result is equivalent to
+        padding every chunk once, up front, to the single widest chunk in the whole sequence.
+        """
+        if not self._pending_chunks:
+            return
+
+        chunks = self._pending_chunks
+        max_width = max(c.shape[1] for c in chunks)
+
+        padded = []
+        for c in chunks:
+            if c.shape[1] < max_width:
+                empty_cols = np.ones((c.shape[0], max_width - c.shape[1]))
+                c = np.concatenate((c, empty_cols), axis=1)
+            padded.append(c)
+
+        self.trace_matrix = padded[0] if len(padded) == 1 else np.concatenate(padded, axis=0)
+        self._pending_chunks = []
 
     #
     def get_latency(self):
@@ -333,6 +363,7 @@ class ReadBufferEstimateBw:
             print('No trace has been generated yet')
             return
 
+        self._finalize_trace_matrix()
         return self.trace_matrix
 
     #
@@ -356,6 +387,7 @@ class ReadBufferEstimateBw:
         Method to get start and stop cycles of the read estimate buffer if trace_valid flag is set.
         """
         assert self.trace_valid, 'Traces not ready yet'
+        self._finalize_trace_matrix()
         start_cycle = self.trace_matrix[0][0]
         end_cycle = self.trace_matrix[-1][0]
 
@@ -370,4 +402,5 @@ class ReadBufferEstimateBw:
             print('No trace has been generated yet')
             return
 
+        self._finalize_trace_matrix()
         np.savetxt(filename, self.trace_matrix, fmt='%s', delimiter=",")

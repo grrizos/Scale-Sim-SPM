@@ -1,31 +1,60 @@
-For each tensor, SCALE-Sim currently doesn't track which operators produce and consume it.
-1) We need to add the logic of debendency between layers
+Ready for review
+Select text to add comments on the plan
+SCALE-Sim Performance Fix Plan
+Context
+SCALE-Sim is cycle-accurate: double_buffered_scratchpad_mem.py's main loop runs one Python iteration per simulated clock cycle. For a real network like MobileNet, early layers alone need 10K-1M+ cycles, so wall-clock time is dominated by per-cycle Python/numpy-scalar overhead, not the actual modeled compute. That's why runs "get stuck on one layer for too long" — it's architectural, not a debug-logging issue.
 
-For OnSRAM:
-2) WE need to add an inter-node spm naager:
-It takes:
+We already confirmed this with cProfile on 3 MobileNet layers (ws dataflow, InterfaceBandwidth: CALC — SCALE-Sim's shipped default): 48.7s, 36.9M function calls. That profile plus a follow-up codebase sweep (verified against the actual source, not just described) turned up a small set of concrete, localized hotspots — most of them easy, low-risk fixes, not a rewrite.
 
-The DAG from (1)
-SPM capacity
-Per-layer bandwidth and compute times (from SCALE-Sim's existing output)
+Goal of this plan: fix the cheap/high-value ones first, verify each with SCALE-Sim's existing golden-trace regression tests (no new test infra needed), and leave the core cycle-by-cycle architecture untouched since changing that is a much bigger, riskier undertaking than what's needed here.
 
-And produces for each tensor:
+What's actually causing the stalls (the "document" part)
+#	Location	Problem	Ease
+1	read_buffer_estimate_bw.py:200 check_hit	Linear scan over self.list_of_sets on every address, every cycle. Called 4.6M times for 3 layers — 15.8s of 48.7s (32%), the single biggest cost.	Medium
+2	write_buffer.py:202, read_buffer.py:298,346	A brand-new tqdm(disable=True) object constructed every single simulated cycle instead of once outside the loop. Measured 4.2s/48.7s (9%) from write_buffer.py alone.	Trivial
+3	systolic_compute_{ws,os,is}.py diagonal-flatten loops (create_ifmap_prefetch_mat/create_filter_prefetch_mat)	Unvectorized element-by-element matrix[row_id][col_id] double-indexing to reorder a matrix onto its anti-diagonals. Measured ~4s/48.7s (8%) for ws.py alone on 3 layers; os.py does this twice per layer (ifmap + filter).	Easy
+4	read_buffer.py:225-271 active_buffer_hit	Same linear-scan pattern as #1, but in the InterfaceBandwidth: USER code path (not exercised by the profiled run — structurally identical problem).	Medium
+5	read_buffer.py:159-166 set_fetch_matrix, :189-203 prepare_hashed_buffer	Unvectorized element-by-element matrix reshape / hashed-set construction, once per layer.	Easy
+6	read_buffer_old.py, write_buffer_old.py	Confirmed dead code (zero imports anywhere in the repo). Not a perf issue, just clutter.	Trivial
+Not worth touching right now (confirmed gated behind non-default options, so they don't affect typical runs): operand_matrix.py sparsity-compression loops and compression.py CSR/CSC loops (only run when sparsity_support: true, default false), read_port.py/write_port.py per-request loops (only expensive when UseRamulatorTrace: True, default False).
 
-Pinning logic (PinLoc): SPM or DRAM
-StartTS / EndTS: which timesteps it lives on-chip
+Verification strategy (applies to every stage below)
+SCALE-Sim already ships an exact-diff regression suite — use it instead of inventing new tests:
 
+test/general/scripts/diff_calc.sh → runs with InterfaceBandwidth: CALC → exercises read_buffer_estimate_bw.py (fixes #1, #2) and write_buffer.py.
+test/general/scripts/diff_user_{ws,os,is}.sh → runs with InterfaceBandwidth: USER → exercises read_buffer.py (fixes #4, #5) and the respective systolic_compute_*.py (fix #3).
+test/sparsity/scripts/function_test.sh → cheap extra safety net for the sparsity paths.
+Each byte-diffs the run's BANDWIDTH_REPORT.csv/COMPUTE_REPORT.csv/DETAILED_ACCESS_REPORT.csv and per-layer trace CSVs against a checked-in golden_trace_* directory — a stricter check than comparing total cycle counts, since it catches subtle per-cycle scheduling changes.
 
-3) We would also need to tell Scale-SIM to skip the computation for transfer for the data that is pinned
+Two practical gotchas confirmed by reading the scripts, before running them:
 
-For COMSA:
-4)The main idea of COSMA: we need to encode the binary variables (C, P, S, R per tensor per timestep) and the constraints (Eq. 1–11 in the paper) and call an ILP solver (python-mip/or the one paper uses gurobi).
+They sed -i edit configs/scale.cfg and scalesim/scale.py in place to force specific settings. configs/scale.cfg already has an uncommitted change on this branch (InterfaceBandwidth: USER → CALC) — stash or copy the repo aside before running these scripts so they don't clobber that, and restore/git checkout those two files after each script runs.
+They source venv/bin/activate, but no venv/ exists in this environment — that line will need to be skipped or a venv created; run the equivalent python3 command directly with PYTHONPATH=. instead.
+The golden topologies are tiny (1-2 layers), so they likely won't exercise buffer eviction/wraparound at scale. For fixes #1 and #4 specifically, also do a before/after run on the in-repo topologies/conv_nets/mobilenet.csv (27 layers) and diff COMPUTE_REPORT.csv plus a couple of per-layer trace CSVs against a pre-fix baseline capture — this is what actually stresses multi-set eviction.
 
-5) A spill/retrieve traffic calculator as additional DRAM traffic on top of the compulsory accesses.   (I dont have a clear idea on how ot do this)
+Staged plan (cheapest/safest/highest-impact first)
+Stage 0 — Baseline
+Run all 4 diff_*.sh + function_test.sh against the current code to confirm they pass before touching anything. Time a full mobilenet.csv run and archive its reports as the "before" reference for the larger-scale diffs in Stages 3 and 4.
 
-This is the pipeline that is missing from the Scale-sim:
+Stage 1 — Remove per-cycle tqdm construction (fix #2)
+Files: write_buffer.py:202, read_buffer.py:298, read_buffer.py:346. Change: for i in tqdm(range(n), disable=True): → for i in range(n):. Why safe: disable=True means it never renders anything — pure construction overhead, zero behavioral effect. Verify: all 4 diff_*.sh (expect zero diff — this is a behavioral no-op), then re-time mobilenet.csv for the wall-clock win. Expected impact: ~9% measured (write_buffer.py alone); read_buffer.py's copies are the same pattern but on the less-common USER-bandwidth path, unmeasured.
 
+Stage 2 — Vectorize the diagonal-flatten prefetch loops (fix #3)
+Files: systolic_compute_ws.py (157-181), systolic_compute_os.py (144-168 and 204-228), systolic_compute_is.py (168-192). Change: replace the nested per-element loop with a per-diagonal loop using numpy fancy indexing (row_ids = np.arange(...); col_ids = diag_id - row_ids; out[idx:idx+n] = matrix[row_ids, col_ids]). Confirmed by hand-tracing that this is a pure reordering (bit-identical output), including the degenerate last-diagonal edge case in the original's loop bounds. Why safe: self-contained pure function on an already-built matrix — testable in isolation with np.array_equal(old(m), new(m)) across a few shapes before running any simulation at all. Note: skew_matrix() (the other diagonal-related function in these files) is a different operation (padded per-cycle demand-matrix skew, not a same-size prefetch-order flatten) — confirmed it cannot be reused as a drop-in for this fix. Verify: unit-check against the old implementation first, then diff_user_ws.sh / diff_user_os.sh / diff_user_is.sh / diff_calc.sh. Expected impact: ~8% measured (ws.py, 3 layers); larger for os.py (runs twice per layer).
 
+Stage 3 — Dict-based check_hit in read_buffer_estimate_bw.py (fix #1, biggest lever)
+File: read_buffer_estimate_bw.py. Change: maintain addr -> most_recent_set_id in a dict as each set is finalized in manage_prefetches; check_hit becomes a dict lookup + range check instead of a scan. Confirmed by tracing list_of_sets's lifecycle that it only ever grows forward (never reused/overwritten), so "most recent occurrence" is always the semantically correct one — this is an exact behavioral replacement, not an approximation. prefetch()'s own iteration over set contents is untouched. Why medium risk: restructures the actual hit/miss decision (not a pure reformat), so it depends on that "forward-only, no reuse" invariant continuing to hold. Verify: diff_calc.sh (the one golden script that runs estimate-bandwidth mode) + mobilenet.csv-scale before/after diff to force real eviction cycles + a small standalone script feeding a synthetic address stream to old vs. new check_hit to confirm identical hit/miss sequences. Expected impact: check_hit alone was 32% of profiled time, its full call chain ~54%. Plausible 25-40% wall-clock reduction for estimate-bandwidth-mode runs — re-measure after implementing, don't treat as promised.
 
-DNN graph with tensor sizes + liveness → inter-layer memory planning → modified DRAM traffic
+Stage 4 — Dict-based active_buffer_hit in read_buffer.py (fix #4)
+File: read_buffer.py. Change: hashed_buffer is built once and never mutated after prepare_hashed_buffer — so a static reverse index (addr -> [line_ids]) built alongside it stays valid even though the active/prefetch window later wraps modularly (unlike Stage 3's forward-only window, this one needs wraparound-aware range checks). Also vectorize prepare_hashed_buffer's per-element set-building loop and set_fetch_matrix's reshape loop (fix #5) while touching this file. Scope carefully: leave the enable_layout_evaluation=True branch (bank-conflict modeling) untouched — it's opt-in (default off) and orthogonal to this fix. Why highest risk in the plan: wraparound window logic, and this path wasn't exercised by the original profile at all — impact is inferred by analogy to Stage 3, not measured. Verify: diff_user_ws.sh / diff_user_is.sh / diff_user_os.sh + mobilenet.csv-scale (InterfaceBandwidth: USER) before/after diff to force window wraparound + synthetic-stream unit check, same as Stage 3. Expected impact: unmeasured; profile this path specifically after implementing before claiming a number.
 
+Stage 5 — Delete dead code (fix #6, optional, zero perf effect)
+Delete read_buffer_old.py, write_buffer_old.py. Keep as its own separate, easily-revertable commit — not bundled with the perf fixes, since it's pure cleanup with no measured benefit. Skip entirely if you'd rather keep this series performance-only.
 
+Honest impact roll-up
+Stages 1-3 alone target roughly 70% of the profiled 48.7s (Stage 3 ~54% cumulative, Stage 1 ~9%, Stage 2 ~8%). Stage 4 targets the same class of problem on a code path the profile didn't exercise, so treat its number as inferred, not measured. Two caveats worth remembering: cProfile's per-call overhead inflates very-high-call-count functions' apparent share versus true wall-clock (percentages are directional, not exact); and Stages 1/3/4 scale with total simulated cycles while Stage 2 scales with layer count × operand-matrix size, so their relative weight shifts depending on which topologies you run most.
+
+Out of scope
+The cycle-by-cycle simulation architecture itself — not being restructured.
+read_port.py/write_port.py, operand_matrix.py sparsity paths, compression.py — confirmed gated behind non-default options (UseRamulatorTrace, sparsity_support).
+De-duplicating the triplicated skew_matrix() across ws/os/is.py — real duplication but already reasonably vectorized and no measured perf upside; a separate cleanup PR if wanted.

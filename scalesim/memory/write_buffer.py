@@ -7,7 +7,6 @@ import time
 import math
 import numpy as np
 # import matplotlib.pyplot as plt
-from tqdm import tqdm
 from scalesim.memory.write_port import write_port
 
 
@@ -28,7 +27,10 @@ class write_buffer:
         # Buffer properties: Calculated
         self.total_size_elems = math.floor(self.total_size_bytes / self.word_size)
         self.active_buf_size = int(math.ceil(self.total_size_elems * self.active_buf_frac))
-        self.drain_buf_size = self.total_size_elems - self.active_buf_size
+        # A buffer this tiny (e.g. an SMM policy sizing it down to ~1 element) can round its entire
+        # capacity into the active half, leaving nothing to drain -- which deadlocks the very first
+        # write. Guarantee at least 1 element of drain room whenever there's any capacity at all.
+        self.drain_buf_size = max(1, self.total_size_elems - self.active_buf_size)
 
         # Backing interface properties
         self.backing_buffer = write_port()
@@ -51,6 +53,12 @@ class write_buffer:
         # Trace matrix
         self.trace_matrix = np.zeros((1, 1))
         self.cycles_vec = np.zeros((1, 1))
+        # Backing storage for the amortized-growable trace_matrix (see _append_chunk_to_trace_matrix).
+        # trace_matrix is kept as a live view (_trace_buf[:_trace_len]) after every append, since
+        # empty_drain_buf() reads trace_matrix mid-simulation (every cycle the buffer drains) --
+        # unlike the read-buffer classes, this one can't defer building the trace to the very end.
+        self._trace_buf = None
+        self._trace_len = 0
 
         # Flags
         # This variable determines where the new requests should be buffered
@@ -83,7 +91,8 @@ class write_buffer:
 
         self.total_size_elems = math.floor(self.total_size_bytes / self.word_size)
         self.active_buf_size = int(math.ceil(self.total_size_elems * self.active_buf_frac))
-        self.drain_buf_size = self.total_size_elems - self.active_buf_size
+        # See __init__ for why this needs a floor of 1.
+        self.drain_buf_size = max(1, self.total_size_elems - self.active_buf_size)
         self.free_space = self.total_size_elems
 
     #
@@ -102,6 +111,8 @@ class write_buffer:
         self.drain_end_cycle = 0
 
         self.trace_matrix = np.zeros((1, 1))
+        self._trace_buf = None
+        self._trace_len = 0
 
         self.num_access = 0
         self.state = 0
@@ -175,15 +186,46 @@ class write_buffer:
 
         #if self.trace_matrix.shape == (1,1):
         if self.trace_matrix_empty:
-            self.trace_matrix = self.trace_matrix_cache
             self.drain_buf_start_line_id = 0
             self.trace_matrix_empty = False
-        else:
-            self.trace_matrix = np.concatenate((self.trace_matrix, self.trace_matrix_cache), axis=0)
+
+        self._append_chunk_to_trace_matrix(self.trace_matrix_cache)
 
         self.trace_matrix_cache = np.zeros((1,1))
         # Fixing ISSUE #10
         self.trace_matrix_cache_empty = True
+
+    #
+    def _append_chunk_to_trace_matrix(self, chunk):
+        """
+        Method to append a chunk of rows to trace_matrix using an amortized-growable backing array
+        instead of concatenating onto trace_matrix directly. Concatenating on every single drain
+        event copies the entire trace built so far every time (O(n^2) total across n drains) --
+        small on-chip buffers (e.g. from SMM policies) drain far more often than SCALE-Sim's default
+        buffer sizes, which makes that cost dominate. Growing this backing array geometrically instead
+        means reallocation+copy only happens O(log n) times, amortizing to O(n) total.
+
+        trace_matrix is reassigned to a fresh view of the backing array after every call, so it stays
+        a valid, correctly-sized, up-to-date array at all times -- empty_drain_buf()/empty_all_buffers()
+        keep reading it exactly as before, since they always read trace_matrix fresh rather than
+        holding on to a reference from before this call.
+        """
+        num_rows, num_cols = chunk.shape
+
+        if self._trace_buf is None:
+            init_capacity = max(num_rows, self.max_cache_lines)
+            self._trace_buf = np.empty((init_capacity, num_cols))
+        elif self._trace_len + num_rows > self._trace_buf.shape[0]:
+            new_capacity = self._trace_buf.shape[0]
+            while new_capacity < self._trace_len + num_rows:
+                new_capacity *= 2
+            grown = np.empty((new_capacity, num_cols))
+            grown[:self._trace_len] = self._trace_buf[:self._trace_len]
+            self._trace_buf = grown
+
+        self._trace_buf[self._trace_len:self._trace_len + num_rows] = chunk
+        self._trace_len += num_rows
+        self.trace_matrix = self._trace_buf[:self._trace_len]
 
     #
     def service_writes(self, incoming_requests_arr_np, incoming_cycles_arr_np):
@@ -199,7 +241,7 @@ class write_buffer:
         # DEBUG_num_drains = 0
         # DEBUG_append_to_trace_times = []
 
-        for i in tqdm(range(incoming_requests_arr_np.shape[0]), disable=True):
+        for i in range(incoming_requests_arr_np.shape[0]):
             row = incoming_requests_arr_np[i]
             cycle = incoming_cycles_arr_np[i]
             current_cycle = cycle[0] + offset
