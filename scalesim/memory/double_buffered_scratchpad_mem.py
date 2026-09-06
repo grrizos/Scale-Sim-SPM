@@ -89,11 +89,21 @@ class double_buffered_scratchpad:
                    ifmap_backing_buf_bw=1, filter_backing_buf_bw=1, ofmap_backing_buf_bw=1,
                    ifmap_sram_bank_num=1, ifmap_sram_bank_port=2, filter_sram_bank_num=1, filter_sram_bank_port=2,
                    using_ifmap_custom_layout=False, using_filter_custom_layout=False,
-                   config=cfg(), topo=topo()
+                   config=cfg(), topo=topo(),
+                   ifmap_buf_class=None, filter_buf_class=None
                    ):
 
         """
         Method to set the double buffered memory simulation parameters for housekeeping.
+
+        ifmap_buf_class/filter_buf_class: optional override for which class
+        to instantiate for the ifmap/filter read buffer, in place of the
+        default rdbuf_est()/rdbuf() picked by estimate_bandwidth_mode.
+        None (the default) reproduces the exact prior behavior for every
+        existing caller. Used by cosma/baseline.py's run_cosma_aware() to
+        install CosmaResidentReadBuffer (scalesim/memory/cosma_resident_buffers.py)
+        for a tensor COSMA's plan says is already resident, without
+        changing anything about how a genuine fetch is simulated.
         """
         self.layer_id = layer_id
         self.topo = topo
@@ -103,8 +113,8 @@ class double_buffered_scratchpad:
         self.estimate_bandwidth_mode = estimate_bandwidth_mode
 
         if self.estimate_bandwidth_mode:
-            self.ifmap_buf = rdbuf_est()
-            self.filter_buf = rdbuf_est()
+            self.ifmap_buf = ifmap_buf_class() if ifmap_buf_class else rdbuf_est()
+            self.filter_buf = filter_buf_class() if filter_buf_class else rdbuf_est()
 
             self.ifmap_buf.set_params(backing_buf_obj=self.ifmap_port,
                                       total_size_bytes=ifmap_buf_size_bytes,
