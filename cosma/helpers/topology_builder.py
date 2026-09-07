@@ -1,4 +1,4 @@
-# cosma/topology_builder.py
+# cosma/helpers/topology_builder.py
 """
 Builds a SCALE-Sim topology CSV from model.json's CONV2D/DEPTHWISE_CONV2D
 layers. SCALE-Sim only simulates conv-like (GEMM-mappable) layers -- ADD,
@@ -81,7 +81,8 @@ def build_topology(model_json_path: str, csv_path: str) -> Dict[int, int]:
 
 if __name__ == '__main__':
     import os
-    here = os.path.dirname(os.path.abspath(__file__))
+    # cosma/ (one level up from helpers/), where model.json/topology.csv live.
+    here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     mapping = build_topology(
         os.path.join(here, 'model.json'),
         os.path.join(here, 'topology.csv'),

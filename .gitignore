@@ -31,3 +31,5 @@ outputs/
 
 cosma/_exported/
 cosma/topology.csv
+cosma/spm_plots/
+cosma/logs/

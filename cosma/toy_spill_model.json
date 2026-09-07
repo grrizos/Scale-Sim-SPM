@@ -1,0 +1,15 @@
+{
+  "_comment": "Synthetic, verification-only fixture -- NOT a real model. Has no real conv params (kernel size, stride, padding, weights/bias) so it is not valid input to baseline.py or topology_builder.py. It exists purely to exercise cosma_Ilp.py's spill/retrieve logic and visualize_spm.py's rendering with a genuine, non-degenerate spill/retrieve, which no currently-exported real model triggers (see cosma/ITERATION_HISTORY.md). Models a skip connection (tensor 10, produced at t=0, not needed again until t=3) coexisting with an unrelated local computation (tensors 11->12 at t=1->2). compute_structural_minimum_bytes = 200 bytes @ t=2; compute_mpmf_bytes = 210 bytes @ t=2.",
+  "tensors": [
+    {"id": 10, "shape": [10],  "dtype": "int8"},
+    {"id": 11, "shape": [100], "dtype": "int8"},
+    {"id": 12, "shape": [100], "dtype": "int8"},
+    {"id": 13, "shape": [10],  "dtype": "int8"}
+  ],
+  "layers": [
+    {"id": 0, "op": "CONV2D", "inputs": [], "inputs_from": [], "outputs": [10]},
+    {"id": 1, "op": "CONV2D", "inputs": [], "inputs_from": [], "outputs": [11]},
+    {"id": 2, "op": "CONV2D", "inputs": [11], "inputs_from": [0], "outputs": [12]},
+    {"id": 3, "op": "ADD", "inputs": [10, 12], "inputs_from": [0, 0], "outputs": [13]}
+  ]
+}

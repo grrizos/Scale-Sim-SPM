@@ -123,7 +123,11 @@ entirely**, and correctly so, not as failures:
 
 All commands below assume the current directory is `SCALE-Sim/cosma/` and
 `scalesim` is importable — either run from `cosma/` with the repo root on
-`PYTHONPATH`, or from the repo root directly:
+`PYTHONPATH`, or from the repo root directly. (`cosma/` is organized as:
+entry points — `run_cosma.py`, `run_experiments.py`, `visualize_spm.py` —
+directly in `cosma/`; library modules only ever imported by those, in
+`cosma/helpers/`; and docs, including this file, in `cosma/docs/`. See
+`PIPELINE.md` for the full layout.)
 
 ```bash
 # from SCALE-Sim/cosma/
@@ -179,14 +183,14 @@ thing:
 
 ```bash
 # 1. Parse model.json, print a graph summary (node/tensor counts, skip-connections)
-PYTHONPATH=..:. python3 graph_builder.py
+PYTHONPATH=..:. python3 helpers/graph_builder.py
 
 # 2. Build the SCALE-Sim topology CSV, print the layer-id -> topology-row mapping
-PYTHONPATH=..:. python3 topology_builder.py
+PYTHONPATH=..:. python3 helpers/topology_builder.py
 
 # 3. Run SCALE-Sim per-layer in-process, print total compute cycles + DRAM bytes
 #    (cross-check against SCALE-Sim's own COMPUTE_REPORT.csv / DETAILED_ACCESS_REPORT.csv if in doubt)
-PYTHONPATH=..:. python3 baseline.py
+PYTHONPATH=..:. python3 helpers/baseline.py
 ```
 
 ### Using `run_cosma.py` as a library (e.g. to sweep SPM budgets)
@@ -244,6 +248,70 @@ independently — an infeasible budget or an unsupported op in one model
 shows up as an `ERROR` row without aborting the rest of the batch, and
 the SCALE-Sim baseline (budget-independent) is run at most once per
 model, reused across every budget in its sweep.
+
+### Seeing COSMA's algorithm actually work: `visualize_spm.py`
+
+`run_cosma.py`'s summary only reports aggregate byte counts (residency
+credit, spill/retrieve totals) -- it never shows *what COSMA actually
+decided*: which tensor went where, when something was evicted, when
+something stayed put. `visualize_spm.py` is the tool for that -- a direct
+picture of the ILP's placement decisions (Eq.9-11's `L`) and its
+tensor-replacement decisions (Eq.3/4/8's `S`/`R`), which are otherwise
+invisible. Its `--bounds-only` mode (below) is a fast secondary use --
+figuring out *whether a given model/budget has anything to show at all*
+before rendering -- not its main purpose.
+
+Like every command above except it never touches SCALE-Sim (no
+`baseline.run_baseline()`, no `run_cosma_aware()`) -- it only loads the
+graph and, if needed, solves the ILP, so it's fast even on ResNet-50/
+Inception-V3-sized graphs.
+
+```bash
+# Render the comparison diagram at one specific budget
+PYTHONPATH=..:. python3 visualize_spm.py --model-json model.json --budget-kb 64
+```
+Saves a PNG to `cosma/spm_plots/` (or `--out <path>`) with two stacked
+panels sharing a timestep x-axis *and* the same byte-address y-axis, so
+bar heights are directly comparable between them. The bottom panel shows
+COSMA's actual chosen SPM placement -- continuous blocks where a tensor
+stays resident (this is where you *see* residency, mechanism #1/#2 in
+the chat discussion this came from) at its real chosen address, explicit
+spill (▽)/retrieve (△) markers where it doesn't (mechanism #4). The top
+panel shows the baseline (no COSMA) regime using the *same* block style
+sized by real byte count, but restacked from address 0 at every single
+timestep and never carried to the next one -- since SCALE-Sim's real
+engine never keeps anything resident across layers, there is no
+placement to show, only "how many bytes were active right now" (every
+timestep's stack is exactly `compute_structural_minimum_bytes()`'s own
+per-node sum -- baseline's peak height across the whole chart always
+equals the model's M_R). Every baseline block is also a DRAM fetch
+(marked △), which is *why* it's redrawn from scratch every time, unlike
+COSMA's blocks which persist. Also prints a plain-text per-tensor event
+table (the diagram's data twin). Raises with the M_R/MPMF bounds baked
+into the message if the budget is infeasible or the solve doesn't reach
+`Optimal`, instead of a bare pulp status string.
+
+**Important caveat, worth repeating every time this comes up**: for all 5
+currently-exported real models, spill/retrieve never fires at any
+feasible budget (M_R == MPMF for every one -- see Appendix item 19), so
+the bottom panel on a real model will only ever show continuous blocks,
+never a ▽/△ marker. `cosma/toy_spill_model.json` is a small synthetic
+fixture built specifically because of this -- it's currently the *only*
+graph in this repo where the diagram actually shows a spill/retrieve:
+```bash
+PYTHONPATH=..:. python3 visualize_spm.py --model-json toy_spill_model.json --budget-kb 0.1953125
+```
+
+```bash
+# Fast secondary use: is there even a budget range where spill/retrieve
+# *could* show up in the diagram for this model, before rendering anything?
+PYTHONPATH=..:. python3 visualize_spm.py --model-json model.json --bounds-only
+```
+Prints the paper's `M_R` (structural minimum -- any budget below this is
+provably `Infeasible`, no solve needed) and MPMF (the ceiling at/above
+which spill/retrieve is always 0, so the diagram would be all continuous
+blocks). If they're equal, don't bother rendering at different budgets
+expecting to see something new -- there's nothing to show at any budget.
 
 ### Testing `cosma_Ilp.py` in isolation on a toy graph
 
@@ -322,17 +390,23 @@ before investing further, rather than assuming either way.
 | File | Role |
 |---|---|
 | `model.json` | Exported MobileNetV2-CIFAR10 graph (64 layers, 172 tensors) |
-| `graph_builder.py` | `model.json` → `nodes`/`tensors` dicts |
-| `topology_builder.py` | `model.json` → SCALE-Sim topology CSV + layer-id↔row map |
-| `baseline.py` | Per-layer SCALE-Sim simulation; `run_baseline()` (plain) and `run_cosma_aware()` (COSMA-plan-driven, real engine numbers) |
+| `run_cosma.py` | Entry point: orchestrates the full pipeline, reports cycles/DRAM/speedup, saves the SPM occupancy plot by default |
+| `run_experiments.py` | Entry point: batch runner, multiple models × budgets, table/CSV output |
+| `visualize_spm.py` | Entry point: fast (no SCALE-Sim), ILP-only debug tool: `--bounds-only` prints M_R/MPMF instantly; otherwise renders a 2-panel PNG (baseline vs. COSMA SPM occupancy over time) |
+| `helpers/graph_builder.py` | `model.json` → `nodes`/`tensors` dicts |
+| `helpers/topology_builder.py` | `model.json` → SCALE-Sim topology CSV + layer-id↔row map |
+| `helpers/baseline.py` | Per-layer SCALE-Sim simulation; `run_baseline()` (plain) and `run_cosma_aware()` (COSMA-plan-driven, real engine numbers) |
+| `helpers/cosma_Ilp.py` | The ILP itself (Eq.1–12, fixed-schedule mode); also `compute_structural_minimum_bytes`/`compute_mpmf_bytes` (M_R/MPMF, solve-free) |
+| `helpers/model_resolver.py` | `resolve_model_json()` — `.tflite` → `model.json`, auto-exported + cached under `_exported/`; shared by `run_cosma.py` and `run_experiments.py` |
 | `../scalesim/memory/cosma_resident_buffers.py` | `CosmaResidentReadBuffer`/`CosmaResidentWriteBuffer` — genuine zero-cost residency/creation in SCALE-Sim's own engine |
-| `cosma_Ilp.py` | The ILP itself (Eq.1–12, fixed-schedule mode) |
-| `unified_spm.py` | Thin resident-tensor ledger (unchanged from original stub) |
-| `run_cosma.py` | Orchestrates the full pipeline, reports cycles/DRAM/speedup |
-| `run_experiments.py` | Batch runner: multiple models × budgets, table/CSV output |
+| `toy_spill_model.json` | Synthetic, verification-only fixture (4 tensors, 10-100 bytes) — a minimal genuine spill/retrieve demonstration |
+| `toy_branching_model.json` | Synthetic, verification-only fixture — bigger/branchier (22 layers, two parallel inception-style blocks, 16-64KB tensors), also forces a genuine spill/retrieve |
+| `spm_plots/` | PNGs saved by `run_cosma.py`/`visualize_spm.py` (gitignored, regenerable) |
 | `_exported/` | Cache of `.tflite` → `model.json` exports made by `run_experiments.py` |
 | `results/` | Timestamped CSV results from `run_experiments.py` (auto-saved by default) |
-| `cosma_integration_plan.md` | Original design doc (Phase-1 plan, predates this file) |
+| `docs/cosma_integration_plan.md` | Original design doc (Phase-1 plan, predates this file) |
+| `docs/STATUS.md` | Quick-scan bulleted summary: what's built vs. what's still missing to match the paper more fully |
+| `docs/PIPELINE.md` | The mechanics: step-by-step flow of `run_cosma.py` (real, SCALE-Sim-verified) and `visualize_spm.py` (fast, ILP-only), with diagrams |
 
 ---
 
@@ -801,3 +875,356 @@ a `DRAM_access.csv` file that doesn't exist in this SCALE-Sim version.
     validated models, plus the two out-of-range models and why) up front;
     moved the full chronological detail here. No content was removed —
     every fact, number, and citation from the original log is still here.
+19. **Added a fast, SCALE-Sim-free budget-range finder and a baseline-vs-
+    COSMA SPM occupancy diagram**, after manually bisecting budgets for
+    ResNet-50/Inception-V3 over SSH proved "very insufficient" (three
+    guesses — 9000KB=Infeasible, 10600/12000KB=Optimal/0-spill — never
+    landed in the interesting range, and each guess cost a real SCALE-Sim
+    baseline pass).
+    - **`cosma_Ilp.compute_structural_minimum_bytes()`/`compute_mpmf_bytes()`**
+      (new, purely additive) compute the paper's `M_R` and MPMF directly
+      from `(nodes, tensors)` — no ILP build/solve, no SCALE-Sim. Below
+      `M_R`, any budget is provably `Infeasible`; at/above MPMF, spill is
+      always 0. Running both against every model in the repo confirmed,
+      concretely, something only suspected before: **`M_R == MPMF`
+      exactly for all five currently-exported real models**
+      (MobileNetV2 60.00KB, ResNet-20 192.00KB, SqueezeNet 80.00KB,
+      Inception-V3 8103.38KB, ResNet-50 9408.00KB) — there is no budget
+      for any of them where nonzero spill/retrieve can ever happen. The
+      ResNet-50 number lines up exactly with the empirically-observed
+      9000KB=Infeasible / 10600KB=Optimal boundary above. This also
+      confirms full ResNet-50 does complete under SCALE-Sim given enough
+      wall-clock time (§2 above describes it as too slow to finish at
+      all, based on an earlier, shorter attempt — it finished on a
+      second machine once run to completion, just slowly; `Optimal`,
+      76.21% reduction, 1.0355× speedup at 80MB).
+    - **`cosma/toy_spill_model.json`** (new) — a small synthetic 4-tensor
+      graph (`M_R`=200B, MPMF=210B) built specifically because no real
+      model can demonstrate a genuine spill/retrieve. The first
+      *persisted* toy fixture in this project (prior ones, e.g. item 5,
+      were always hand-built in-memory objects in throwaway scripts).
+      Documented in the file itself as synthetic/verification-only, not
+      valid `baseline.py`/`topology_builder.py` input.
+    - **`cosma/visualize_spm.py`** (new) — renders a 2-panel PNG per
+      `(model, budget)`: top panel is the baseline ("no COSMA") regime,
+      bottom is COSMA's plan. Both are derived structurally (no
+      simulation): baseline's panel comes from a new
+      `compute_baseline_resident_action()` that mirrors
+      `cosma_Ilp.extract_results()`'s `resident_action` shape but purely
+      from `producer_layer`/`consumer_layers` — every tensor shown as
+      resident only at its own creation instant, refetched fresh at
+      *every* consuming timestep, since SCALE-Sim's default engine has no
+      cross-layer persistence at all (confirmed while building
+      `cosma_resident_buffers.py` in item 15 — no hook exists anywhere
+      for "already loaded by a previous layer"). This is also why the
+      baseline panel's y-axis is a plain per-tensor row, not an SPM
+      address — baseline never places anything into a shared address
+      space to begin with (it uses three independent, fixed-size typed
+      buffers), so drawing one would misrepresent it. The COSMA panel
+      keeps the real byte-address y-axis the user explicitly asked for,
+      built from `spm_plan` via a run-grouping algorithm (group a
+      tensor's resident timesteps into contiguous same-address runs;
+      proved, from Eq.1/3/4/11, that a spill always precedes any address
+      change for the same tensor, so gaps and re-placement always
+      coincide) with spill/retrieve marked as explicit status markers.
+      Verified end-to-end on the toy fixture at both `M_R` (200B: real
+      spill@t=1 + retrieve@t=3 to a new address, `extra_dram_bytes`
+      totaling exactly 2×size as expected) and MPMF (210B: one
+      continuous resident block, zero markers), and rendered cleanly
+      against the real MobileNetV2 model at 64KB.
+    - Also deleted `cosma/unified_spm.py` (a `UnifiedSPM` ledger stub —
+      confirmed via repo-wide grep to be imported nowhere; superseded
+      before it was ever wired in by `cosma_resident_buffers.py`'s real
+      engine integration in item 15) and removed it from §6's table.
+
+20. **Found and fixed a real ILP base-case gap (via ResNet-50), verified
+    the "no placement reward" claim against the actual paper PDF, and
+    redesigned the baseline panel to match COSMA's** — all from the user
+    actually running `visualize_spm.py` on real models and asking "why is
+    there so much empty space" and "are you sure nothing rewards compact
+    placement, should I send you the paper."
+    - **Verified against the primary source**: found the actual paper
+      (`~/Downloads/Combined Scheduling, Memory Allocation (1).pdf`,
+      arXiv:2311.18246) already on disk and read it in full rather than
+      re-asserting from memory. §III-D Eq.12 (general) and §III-E2 Eq.17
+      (the fixed-schedule mode we implement) both read exactly
+      `argmin Σ_t Σ_a (S_{a,t}+R_{a,t})×Size(a)` — `L` (address) never
+      appears in either objective, only in constraints Eq.9/10/11. Confirms
+      the claim precisely: placement is unconstrained by cost once it's
+      feasible, straight from the paper's own formulation.
+    - **Found a real gap while explaining the ResNet-20@512KB "empty
+      space" screenshot**: `cosma_Ilp.build_cosma_model()`'s Eq.2/3 loop
+      only added the "must have been resident at t-1" constraint `if
+      t > 0`, leaving `P[a, T[0]]`/`S[a, T[0]]` **completely
+      unconstrained** for every tensor at the very first timestep — Eq.1
+      alone doesn't forbid them. Confirmed concretely (not just in
+      theory) on ResNet-50 @ 9408KB: 5 of 79 tensors (ids 35, 68, 92, 123,
+      132) got a spurious `P` at t=0 in an `Optimal` solve, visible in the
+      diagram as a nonsense cluster of blocks at the very left edge for
+      tensors not actually produced until layers 14–53. Checked the
+      S-side too (would have corrupted `extra_dram_bytes`, a real
+      reported number, not just the diagram) — did not fire on ResNet-50
+      or any of the 3 previously-validated models; those published
+      numbers are confirmed unaffected. **Fixed** by adding explicit
+      `P[a,T[0]]==0`/`S[a,T[0]]==0` base-case constraints (mirroring what
+      Eq.2/3 already enforce for every other timestep, since there is no
+      "t-1" before the first one for anything to have been resident at).
+      Re-verified after the fix: ResNet-50 still `Optimal`, still 0
+      spill, phantom entries gone; MobileNetV2/ResNet-20/SqueezeNet
+      unchanged; `toy_spill_model.json` still spills/retrieves the same
+      10 bytes each way (CBC landed on a *different* but equally-valid
+      retrieval address in one case — itself a live confirmation of the
+      point above: address really is a don't-care to the objective).
+    - **Redesigned the baseline panel** at the user's request ("i want
+      the baseline and cosma panel look similar to compare") — it used to
+      draw isolated dots on an arbitrary per-tensor row index, which
+      couldn't be visually compared to the COSMA panel's byte-address
+      bars at all. New `visualize_spm.baseline_timestep_stacks()`: at
+      each timestep, stack that timestep's active tensors (exactly
+      `compute_structural_minimum_bytes()`'s own per-node set) from
+      address 0 upward. The baseline panel now draws the *same* colored,
+      byte-sized rectangles as the COSMA panel, sharing one y-axis scaled
+      to `max(budget, baseline's own peak stack)` — the honest difference
+      being a baseline block spans exactly one timestep and always
+      restacks from 0 (nothing carries over — still no real placement,
+      per the subtitle), while a COSMA block can span many timesteps at
+      one fixed address because it's genuinely kept resident. This makes
+      the comparison legible at a glance: e.g. on ResNet-20@512KB,
+      baseline's tallest stack is exactly 196,608 bytes — precisely its
+      M_R — while COSMA's blocks reach the full 512KB ceiling in its
+      tightest region, directly showing COSMA trading budget headroom for
+      duration of residency, something the old dot-based panel couldn't
+      express at all.
+
+21. **Explained the array-size/speedup mystery precisely (not just
+    plausibly), added per-layer compute-vs-memory-bound logging to
+    `run_cosma.py`, and built a bigger/branchier toy fixture.**
+    - **The 64×64-vs-16×16 puzzle, resolved with real numbers, not a
+      guess.** Item 20's finding that ResNet-20 got 0% speedup at 64×64
+      despite a real 78.3% DRAM cut raised an obvious question: doesn't a
+      *bigger* array mean *faster* compute, which should make memory
+      matter *more*, not less? Checked directly (`baseline.run_baseline()`
+      run twice, same model, 16×16 vs 64×64 configs): the 64×64 array
+      really is 4.26× faster (208,501 → 48,983 total compute cycles) —
+      bigger arrays are not slower. The actual mechanism is in
+      `run_cosma.py`'s `_default_bandwidth_words_per_cycle()`: in `CALC`
+      bandwidth mode (this project's mode throughout), SCALE-Sim has no
+      single DRAM bandwidth number, so that function reuses the array's
+      own width (`arr_col`) as the assumed DRAM bandwidth too — confirmed
+      directly (16.0 words/cycle at 16×16, 64.0 at 64×64, exactly 4×).
+      Since `dram_bytes` doesn't depend on array size but the assumed
+      bandwidth does, `dram_bytes/bandwidth` shrinks by roughly the same
+      factor compute does when the array grows, so whichever term
+      (compute or memory) already dominated `max(compute_cycles,
+      dram_bytes/bandwidth)` keeps dominating regardless of array size —
+      it's an artifact of tying bandwidth to array width for estimation
+      convenience, not a hardware fact (real DRAM bandwidth is a memory-
+      interface property, independent of PE array size). At 16×16,
+      compute (208,501) and the memory estimate (191,299) are close
+      enough that individual layers actually flip to memory-bound,
+      letting COSMA's DRAM cut shorten the real critical path (the
+      measured 1.0299×); at 64×64 compute so thoroughly out-races even
+      the *unoptimized* memory estimate (48,983 vs. 191,299) that no
+      layer is ever memory-bound, so DRAM traffic literally cannot matter
+      no matter how much of it COSMA removes. Checked whether `scale.cfg`
+      supports an explicit, array-independent bandwidth (`InterfaceBandwidth:
+      USER` + a fixed `Bandwidth` value, confirmed to exist in
+      `scalesim/scale_config.py`) as a cleaner alternative to tuning array
+      size — but `USER` mode routes to a different buffer class than
+      `CALC` mode's `ReadBufferEstimateBw`, which `cosma_resident_buffers.py`
+      is built specifically to subclass, so switching modes isn't a safe
+      drop-in today; noted as a real, separate piece of future work rather
+      than attempted here.
+    - **Added per-layer compute-vs-memory-bound logging to `run_cosma.py`**
+      (`layer_bound_breakdown`, `baseline_memory_bound_layers`,
+      `cosma_memory_bound_layers` in the returned summary, plus a new
+      verbose-mode print block) — exactly the visibility that was missing
+      and had to be reconstructed by hand to explain the finding above.
+      Verified against both configs: correctly reports 9/32 layers
+      memory-bound at 16×16 (all 9 flip to compute-bound under COSMA) and
+      0/32 at 64×64, matching the by-hand analysis exactly.
+    - **`cosma/toy_branching_model.json`** (new) — a bigger, branchier
+      synthetic fixture than `toy_spill_model.json`'s 4-tensor/10-byte
+      example, at the user's request ("a lot of parallel paths... average
+      size tensors, not 10 bytes"). 22 layers, two back-to-back
+      inception-style blocks (3-way then 4-way parallel conv branches
+      merging back together), each with its own long-lived skip tensor
+      spanning the whole block; tensor sizes 16KB-64KB (int8, so
+      `shape == bytes` directly), matching the real models' activation-size
+      range rather than the original toy's 10-100 byte tensors. Verified:
+      `M_R`=144.00KB, MPMF=208.00KB (a real 64KB gap, much wider than the
+      original toy's 10-byte one); solved at 176KB and confirmed two
+      genuine spill/retrieve events fire (tensors 112 and 115, each
+      evicted and later retrieved at a *different* address) alongside two
+      long-lived skip tensors (100, 109) that stay resident as one
+      continuous block across their entire block's parallel phase.
+
+22. **`run_cosma.py` now also saves the SPM occupancy diagram by
+    default**, at the user's request after running it standalone and
+    wanting the visual plan alongside the text report every time. New
+    `save_plot`/`plot_out_path` params on `run_cosma()` (default
+    `save_plot=False`, since `run_experiments.py` calls `run_cosma()` in a
+    tight per-budget sweep loop and a plot per call there isn't wanted);
+    the CLI turns it on by default, with `--no-plot` to opt out and
+    `--plot-out` to override the path. Reuses the ILP solve already done
+    inside `run_cosma()` (`cosma_Ilp.extract_results()`'s `result`) by
+    calling `visualize_spm.compute_baseline_resident_action()` +
+    `render_comparison()` directly — deliberately not a second CLI
+    invocation of `visualize_spm.py`, which would re-solve the ILP from
+    scratch and double the cost on anything Inception-V3-sized. Verified:
+    reproduced the user's exact command (SqueezeNet @256KB), confirmed the
+    PNG saves to the same default path `visualize_spm.py` itself would use
+    (`squeezenet_small_cifar100_int8_tucker_svd_5_256kb.png`), and that
+    `--no-plot` correctly skips it.
+
+23. **Reorganized `cosma/` into `helpers/`/`docs/`/entry-points**, at the
+    user's request to tidy the directory. Moved the four library-only
+    modules (never run directly, only imported) into `cosma/helpers/`:
+    `graph_builder.py`, `topology_builder.py`, `baseline.py`,
+    `cosma_Ilp.py`, plus a new `helpers/__init__.py`. Moved all four `.md`
+    docs into `cosma/docs/`: `ITERATION_HISTORY.md`, `STATUS.md`,
+    `PIPELINE.md`, `cosma_integration_plan.md`. Left the three real entry
+    points (`run_cosma.py`, `run_experiments.py`, `visualize_spm.py`) and
+    all data files (`model.json`, both toy fixtures, `_exported/`,
+    `results/`, `spm_plots/`) exactly where they were. Used `git mv` for
+    every tracked file so history follows the move.
+    - Fixed every import that broke: the three entry points now do
+      `from helpers import graph_builder` (etc.) instead of bare
+      `import graph_builder`; `helpers/baseline.py`'s own cross-imports of
+      its new siblings became relative (`from .topology_builder import
+      build_topology`, `from .graph_builder import compute_size_bytes`).
+    - Fixed a real path-breakage risk, not just the imports: `baseline.py`
+      and the `__main__` debug blocks in `graph_builder.py`/
+      `topology_builder.py` all compute a `HERE`/`here` from their own
+      `__file__` and use it to find `model.json` (and, for `baseline.py`,
+      `../configs/scale.cfg`). Moving them one directory deeper would have
+      silently pointed all of these at `cosma/helpers/` instead of
+      `cosma/` — added one extra `os.path.dirname()` to each so they still
+      resolve to `cosma/`, unchanged from before the move.
+    - Verified end-to-end after the move: all `.py` files parse; both
+      `visualize_spm.py` (no `PYTHONPATH` needed) and `run_cosma.py`/
+      `run_experiments.py` (`PYTHONPATH=..:.` needed for `scalesim`) run
+      correctly and reproduce previously-established numbers exactly
+      (MobileNetV2 @64KB: 99,176/86,439 residency credit, 32.51%,
+      1.0016×); both `helpers/graph_builder.py` and
+      `helpers/topology_builder.py` still work as standalone debug
+      scripts and still read/write `cosma/model.json`/`cosma/topology.csv`
+      (not `cosma/helpers/`).
+    - Updated path references in the docs that describe *current* usage
+      (§3's standalone-debug commands, §6's file table) to the new
+      `helpers/`/`docs/` locations, and added a directory-layout diagram
+      to `PIPELINE.md`. Left the chronological Appendix narrative (this
+      section) untouched, per its own "no content removed" convention —
+      it describes what was true at each point in time.
+
+24. **`run_cosma.py` now auto-exports `.tflite` inputs, and
+    `run_experiments.py` now saves a full verbose log per (model, budget)
+    combination.** Two related asks: `run_cosma.py` required an
+    already-exported `model.json`, while `run_experiments.py` could take
+    a raw `.tflite` directly; and `run_experiments.py`'s CSV only ever
+    held the compact summary row, never the full per-run detail
+    `run_cosma.py --verbose` shows.
+    - **`helpers/model_resolver.py`** (new) — `resolve_model_json()`,
+      moved out of `run_experiments.py` (which had it standalone) so both
+      entry points share one implementation. Passthrough for an already-
+      `.json` path; for a `.tflite`, exports via the trim project's
+      exporter and caches the result under `--export-dir`, keyed by the
+      input's last two path components. `run_experiments.py` now imports
+      it instead of defining its own copy.
+    - **`run_cosma()` gained `exporter`/`export_dir`/`force_export`
+      params** (and the CLI, matching flags) — resolves `model_json_path`
+      through `model_resolver.resolve_model_json()` right at the top of
+      the function, before anything else touches it, so every downstream
+      use (the ILP, both SCALE-Sim passes, the plot's default filename)
+      already sees the real `model.json` path. Verified against a raw
+      `.tflite` whose export was already cached from earlier sessions
+      (`_exported/resnet50-tflite-float/resnet50.tflite` — hits the
+      existing `_exported/_exported_resnet50-tflite-float/model.json`
+      cache directly, confirming the naming derivation matches
+      `run_experiments.py`'s exactly, byte for byte).
+    - **`run_experiments.py` saves a full verbose report per combination**
+      by default, under a timestamped `cosma/logs/run_<timestamp>/`
+      directory (`--logs-dir` to override, `--no-logs` to skip) — the
+      same timestamp the CSV uses, for easy correlation. New
+      `_run_and_log()` wraps each `run_cosma.run_cosma(verbose=True)` call
+      in `contextlib.redirect_stdout(io.StringIO())`, so the exact same
+      print statements `run_cosma.py` alone would show get captured to a
+      string instead of flooding the sweep's terminal output, then
+      written to `<model>_<budget>kb.log` (reusing the same name-
+      derivation logic as `visualize_spm.default_out_path()`). Also
+      captures a failing combination's exception into its log rather than
+      only the CSV's one-line error string.
+    - **Caught and fixed a real bug during verification, not just a
+      hypothetical**: the "Wrote per-combination logs to ..." message
+      printed unconditionally whenever logging was enabled, even for a
+      sweep where every budget failed the fast pre-check and `_run_and_log()`
+      (the only place that actually creates the logs directory) was never
+      called even once -- claiming logs were written when the directory
+      didn't exist at all. Fixed by checking `os.path.isdir(logs_dir)`
+      before printing the message. Verified both directions: an all-fail
+      sweep (`--budgets-kb 1`) now prints nothing about logs, a normal
+      sweep still does and the directory genuinely contains one `.log`
+      file per combination with the exact same content `run_cosma.py`
+      alone would print (verified byte-for-byte on MobileNetV2 @64KB).
+
+25. **Log filenames now include the array size**, after the user asked
+    how to be sure a run actually exercised SCALE-Sim and was pointed at
+    "change `--config`'s array size and watch the cycle numbers move" as
+    the strongest available proof (item 21's array-size/bandwidth finding
+    already established this empirically) -- which immediately raised the
+    obvious follow-up problem: re-running the same (model, budget) at a
+    different array size would silently overwrite the previous log, since
+    `_log_file_name()` only encoded model + budget. New
+    `_array_dims_tag(config_path)` reads `ArrayHeight`/`ArrayWidth` via
+    `scale_config.get_array_dims()` and returns e.g. `'64x64'`; folded into
+    `_log_file_name()` as `<model>_<budget>kb_<array>.log`, computed once
+    per `run_model_sweep()` call (not per budget) since it only depends on
+    `config_path`. Verified directly: the same model+budget run through
+    `configs/scale.cfg` (currently 16x16) and a 64x64 copy produced
+    `model_64kb_16x16.log` and `model_64kb_64x64.log` -- two files, not
+    one overwriting the other. (First verification attempt used a flawed
+    test -- both configs accidentally ended up 16x16, since `configs/
+    scale.cfg` had been reverted to 16x16 since item 21's 64x64 findings
+    without that being noticed here -- caught by the log content itself
+    showing identical numbers, redone properly with a genuinely different
+    second config.)
+
+26. **`run_experiments.py` now saves plots too (it never did before), and
+    the array-size tag from item 25 was extended to plots and the results
+    CSV as well**, so all three artifact kinds from one sweep -- CSV,
+    logs, plots -- are tagged consistently and none of them silently
+    overwrite a previous run at a different array size.
+    - **`visualize_spm.default_out_path()` gained an optional `tag`
+      param**, inserted before `.png` (`<model>_<budget>kb[_<tag>].png`).
+      Deliberately *not* made to read the array size itself from a config
+      path -- this module still never imports anything under `scalesim/`
+      (see its own module docstring), so the tag stays a plain string the
+      caller computes and passes in.
+    - **`run_cosma.py` gained a local `_array_dims_tag(config_path)`**
+      (mirrors `run_experiments.py`'s identical helper from item 25;
+      small enough that a second copy was simpler than factoring out a
+      shared module for two ~6-line functions) and now passes it to
+      `default_out_path()` whenever `plot_out_path` isn't explicitly
+      overridden -- so even a single standalone `run_cosma.py` run is
+      protected from the same overwrite risk, not just sweeps.
+    - **`run_experiments.py`'s `run_model_sweep()` gained `save_plots:
+      bool = True`**, threaded into `_run_and_log()`'s `run_cosma.run_cosma()`
+      call as `save_plot=save_plots` -- previously this was never passed at
+      all, so `run_experiments.py` saved zero plots regardless of anything
+      else. CLI: `--no-plots` to opt out, matching `--no-logs`'s pattern.
+      Since `run_cosma()`'s own default naming is now array-tagged, this
+      needed no naming logic of its own in `run_experiments.py` -- passing
+      `save_plot=True` is enough; the "Saved SPM occupancy comparison to
+      ..." line lands in that combination's log file (stdout is redirected
+      there for the whole call), not the live sweep terminal.
+    - **The results CSV filename also gained the array tag**:
+      `results/run_<timestamp>.csv` -> `results/run_<timestamp>_<array>.csv`,
+      computed once in `main()` (one `--config` covers the whole sweep, so
+      this is well-defined at that level, unlike per-combination naming).
+    - Verified end-to-end: a standalone `run_cosma.py` run saved
+      `spm_plots/model_64kb_8x8.png` (config was 8x8 by the time this was
+      tested -- confirms the tag reads the config live, not a cached
+      value); a 2-budget `run_experiments.py` sweep on the same config
+      produced both `spm_plots/model_{64,128}kb_8x8.png` (real files, ~200KB
+      each, confirmed on disk, not just claimed in the log) and
+      `results/run_<timestamp>_8x8.csv`.

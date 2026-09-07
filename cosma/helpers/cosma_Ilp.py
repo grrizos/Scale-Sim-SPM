@@ -1,4 +1,4 @@
-# cosma/cosma_Ilp.py
+# cosma/helpers/cosma_Ilp.py
 """
 Builds and solves the COSMA ILP (Eq. 1-12 of the plan doc) given a graph
 from graph_builder.py.
@@ -23,6 +23,10 @@ per tensor per timestep, whether to preserve in SPM (P), spill to DRAM (S),
 retrieve from DRAM (R), and (while resident) its base address (L) --
 subject to the non-overlap (Eq.10) and budget (Eq.9) constraints, filtered
 to only tensor pairs whose liveness windows actually overlap.
+
+Also exposes two solve-free feasibility bounds (compute_structural_minimum_bytes,
+compute_mpmf_bytes) -- the budget range worth searching at all, without
+paying for a full build_cosma_model()/solve().
 """
 import pulp
 from typing import Dict, List, Tuple
@@ -36,6 +40,49 @@ def _liveness_windows(tensors) -> Dict[int, Tuple[int, int]]:
         end = max(t.consumer_layers) if t.consumer_layers else start
         windows[tid] = (start, end)
     return windows
+
+
+def compute_structural_minimum_bytes(nodes, tensors) -> Tuple[int, int]:
+    """
+    The paper's M_R: the largest amount of tensor memory that MUST be
+    simultaneously resident at some single timestep no matter what
+    scheduling/spilling choices are made -- for each node t, the sum of
+    the sizes of its own activation_inputs plus its own outputs (exactly
+    what Eq.5 already forces resident at t = producer_t[a]). Below this
+    budget, build_cosma_model()/solve() is provably Infeasible -- no need
+    to build or solve the ILP to find that out.
+
+    Returns (bytes, argmax_timestep) so a caller can report *which*
+    operator is the bottleneck, not just the number.
+    """
+    floor_bytes, floor_t = 0, None
+    for t in sorted(nodes.keys()):
+        node = nodes[t]
+        live = sum(tensors[a].size_bytes for a in node.activation_inputs if a in tensors)
+        live += sum(tensors[a].size_bytes for a in node.outputs if a in tensors)
+        if live > floor_bytes:
+            floor_bytes, floor_t = live, t
+    return floor_bytes, floor_t
+
+
+def compute_mpmf_bytes(nodes, tensors) -> Tuple[int, int]:
+    """
+    The paper's MPMF (minimum peak memory footprint): the peak, over all
+    timesteps t, of the combined size of every tensor whose liveness
+    window (_liveness_windows) covers t. At or above this budget, Eq.12's
+    objective is always 0 -- everything that could ever coexist already
+    fits, so nothing is ever evicted.
+
+    Returns (bytes, argmax_timestep).
+    """
+    windows = _liveness_windows(tensors)
+    ceiling_bytes, ceiling_t = 0, None
+    for t in sorted(nodes.keys()):
+        live = sum(tensors[tid].size_bytes for tid, (start, end) in windows.items()
+                   if start <= t <= end)
+        if live > ceiling_bytes:
+            ceiling_bytes, ceiling_t = live, t
+    return ceiling_bytes, ceiling_t
 
 
 def assert_tensors_fit_budget(tensors, memory_budget_bytes: int) -> None:
@@ -93,12 +140,24 @@ def build_cosma_model(nodes, tensors, memory_budget_bytes: int):
         for t in T:
             prob += C(a, t) + P[a, t] + S[a, t] + R[a, t] <= 1, f"Eq1_{a}_{t}"
 
-    # Eq.2/3: preserve/spill only if resident at t-1; Eq.4: retrieve only if spilled by t
+    # Eq.2/3: preserve/spill only if resident at t-1; Eq.4: retrieve only if spilled by t.
+    # Base case (t == T[0]): there is no t-1 for Eq.2/3 to chain from, so
+    # nothing can be "already resident" yet -- without this, P[a,T[0]]/
+    # S[a,T[0]] are left completely unconstrained for every tensor (Eq.1
+    # alone doesn't forbid them), letting the solver plant a zero-cost
+    # "phantom" P (or, worse, a genuinely double-counted S) on a tensor
+    # before it's even created. Confirmed to actually happen on ResNet-50
+    # (5 of 79 tensors got a spurious P at t=0 in an optimal solve) --
+    # silent on every previously-validated smaller model, but a real gap.
+    t0 = T[0]
     for a in A:
         for t in T:
-            if t > 0:
+            if t > t0:
                 prob += P[a, t] <= C(a, t - 1) + P[a, t - 1] + R[a, t - 1], f"Eq2_{a}_{t}"
                 prob += S[a, t] <= C(a, t - 1) + P[a, t - 1], f"Eq3_{a}_{t}"
+            else:
+                prob += P[a, t] == 0, f"Eq2_base_{a}_{t}"
+                prob += S[a, t] == 0, f"Eq3_base_{a}_{t}"
             prob += R[a, t] <= pulp.lpSum(S[a, k] for k in T if k <= t), f"Eq4_{a}_{t}"
 
     # Eq.5: an operator's activation inputs must already be resident when it runs.

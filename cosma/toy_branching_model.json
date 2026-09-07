@@ -1,0 +1,53 @@
+{
+  "_comment": "Synthetic, verification-only fixture -- NOT a real model, no real conv params (kernel/stride/pad/weights), so not valid input to baseline.py/topology_builder.py. Built to force real evictions on a bigger, branchier graph than toy_spill_model.json's 4-tensor/10-byte example: two back-to-back 'inception-style' blocks, each fanning a shared tensor out into several parallel conv branches before merging back together, plus a long-lived skip tensor per block that must survive the entire parallel phase competing for space against every branch's intermediate tensors. Tensor sizes are 16KB-64KB (int8, so shape==bytes directly), matching the activation-size range seen in the real models tested elsewhere in cosma/ (MobileNetV2/ResNet-20), not 10-byte toy values. Run `python3 visualize_spm.py --model-json toy_branching_model.json --bounds-only` for the exact M_R/MPMF for this graph.",
+  "tensors": [
+    {"id": 100, "shape": [65536], "dtype": "int8"},
+    {"id": 101, "shape": [32768], "dtype": "int8"},
+    {"id": 102, "shape": [32768], "dtype": "int8"},
+    {"id": 103, "shape": [32768], "dtype": "int8"},
+    {"id": 104, "shape": [16384], "dtype": "int8"},
+    {"id": 105, "shape": [16384], "dtype": "int8"},
+    {"id": 106, "shape": [16384], "dtype": "int8"},
+    {"id": 107, "shape": [16384], "dtype": "int8"},
+    {"id": 108, "shape": [16384], "dtype": "int8"},
+    {"id": 109, "shape": [65536], "dtype": "int8"},
+    {"id": 110, "shape": [32768], "dtype": "int8"},
+    {"id": 111, "shape": [32768], "dtype": "int8"},
+    {"id": 112, "shape": [32768], "dtype": "int8"},
+    {"id": 113, "shape": [32768], "dtype": "int8"},
+    {"id": 114, "shape": [16384], "dtype": "int8"},
+    {"id": 115, "shape": [16384], "dtype": "int8"},
+    {"id": 116, "shape": [16384], "dtype": "int8"},
+    {"id": 117, "shape": [16384], "dtype": "int8"},
+    {"id": 118, "shape": [16384], "dtype": "int8"},
+    {"id": 119, "shape": [16384], "dtype": "int8"},
+    {"id": 120, "shape": [16384], "dtype": "int8"},
+    {"id": 121, "shape": [65536], "dtype": "int8"}
+  ],
+  "layers": [
+    {"id": 0,  "op": "CONV2D", "inputs": [],        "inputs_from": [],     "outputs": [100]},
+
+    {"id": 1,  "op": "CONV2D", "inputs": [100],      "inputs_from": [0],    "outputs": [101]},
+    {"id": 2,  "op": "CONV2D", "inputs": [100],      "inputs_from": [0],    "outputs": [102]},
+    {"id": 3,  "op": "CONV2D", "inputs": [100],      "inputs_from": [0],    "outputs": [103]},
+    {"id": 4,  "op": "CONV2D", "inputs": [101],      "inputs_from": [0],    "outputs": [104]},
+    {"id": 5,  "op": "CONV2D", "inputs": [102],      "inputs_from": [0],    "outputs": [105]},
+    {"id": 6,  "op": "CONV2D", "inputs": [103],      "inputs_from": [0],    "outputs": [106]},
+    {"id": 7,  "op": "ADD",    "inputs": [104, 105], "inputs_from": [0, 0], "outputs": [107]},
+    {"id": 8,  "op": "ADD",    "inputs": [107, 106], "inputs_from": [0, 0], "outputs": [108]},
+    {"id": 9,  "op": "ADD",    "inputs": [108, 100], "inputs_from": [0, 0], "outputs": [109]},
+
+    {"id": 10, "op": "CONV2D", "inputs": [109],      "inputs_from": [0],    "outputs": [110]},
+    {"id": 11, "op": "CONV2D", "inputs": [109],      "inputs_from": [0],    "outputs": [111]},
+    {"id": 12, "op": "CONV2D", "inputs": [109],      "inputs_from": [0],    "outputs": [112]},
+    {"id": 13, "op": "CONV2D", "inputs": [109],      "inputs_from": [0],    "outputs": [113]},
+    {"id": 14, "op": "CONV2D", "inputs": [110],      "inputs_from": [0],    "outputs": [114]},
+    {"id": 15, "op": "CONV2D", "inputs": [111],      "inputs_from": [0],    "outputs": [115]},
+    {"id": 16, "op": "CONV2D", "inputs": [112],      "inputs_from": [0],    "outputs": [116]},
+    {"id": 17, "op": "CONV2D", "inputs": [113],      "inputs_from": [0],    "outputs": [117]},
+    {"id": 18, "op": "ADD",    "inputs": [114, 115], "inputs_from": [0, 0], "outputs": [118]},
+    {"id": 19, "op": "ADD",    "inputs": [116, 117], "inputs_from": [0, 0], "outputs": [119]},
+    {"id": 20, "op": "ADD",    "inputs": [118, 119], "inputs_from": [0, 0], "outputs": [120]},
+    {"id": 21, "op": "ADD",    "inputs": [120, 109], "inputs_from": [0, 0], "outputs": [121]}
+  ]
+}

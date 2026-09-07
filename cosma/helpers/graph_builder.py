@@ -1,4 +1,4 @@
-# cosma/graph_builder.py
+# cosma/helpers/graph_builder.py
 """
 Parses model.json (COSMA's tensor-graph input format) into two dicts:
   nodes:   layer id -> Node    (operators)
@@ -118,6 +118,7 @@ def print_graph_summary(nodes: Dict[int, Node], tensors: Dict[int, Tensor]) -> N
 
 if __name__ == '__main__':
     import os
-    here = os.path.dirname(os.path.abspath(__file__))
+    # cosma/ (one level up from helpers/), where model.json actually lives.
+    here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     nodes, tensors = load_graph(os.path.join(here, 'model.json'))
     print_graph_summary(nodes, tensors)

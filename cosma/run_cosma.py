@@ -47,9 +47,11 @@ per the "activation tensors only" design decision).
 import argparse
 import os
 
-import graph_builder
-import baseline
-import cosma_Ilp
+from helpers import graph_builder
+from helpers import baseline
+from helpers import cosma_Ilp
+from helpers import model_resolver
+import visualize_spm
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_MODEL_JSON = os.path.join(HERE, 'model.json')
@@ -74,19 +76,58 @@ def _default_bandwidth_words_per_cycle(config_path: str) -> float:
     return float(arr_col)
 
 
+def _array_dims_tag(config_path: str) -> str:
+    """'<ArrayHeight>x<ArrayWidth>' from a scale.cfg, e.g. '64x64' -- used
+    to tag the default plot filename so re-running the same (model,
+    budget) under a different array size doesn't silently overwrite the
+    previous plot (see run_experiments.py's identical tag for logs, added
+    for the same reason)."""
+    from scalesim.scale_config import scale_config
+    config = scale_config()
+    config.read_conf_file(config_path)
+    arr_row, arr_col = config.get_array_dims()
+    return f"{arr_row}x{arr_col}"
+
+
 def run_cosma(model_json_path: str = DEFAULT_MODEL_JSON,
               config_path: str = DEFAULT_CONFIG,
               memory_budget_bytes: int = 128 * 1024,
               bandwidth_bytes_per_cycle: float = None,
               ilp_time_limit_sec: float = 120,
               layer_stats: dict = None,
-              verbose: bool = True) -> dict:
+              verbose: bool = True,
+              save_plot: bool = False,
+              plot_out_path: str = None,
+              exporter: str = model_resolver.DEFAULT_EXPORTER,
+              export_dir: str = model_resolver.DEFAULT_EXPORT_DIR,
+              force_export: bool = False) -> dict:
     """
+    model_json_path may also be a raw .tflite file -- it's auto-exported
+    to model.json and cached under export_dir (see helpers/model_resolver.py,
+    the same auto-export run_experiments.py already did; factored out so
+    run_cosma.py doesn't require an already-exported model.json either).
+
     layer_stats: optional precomputed baseline.run_baseline() output, to
         skip re-running SCALE-Sim (which doesn't depend on memory_budget_bytes
         at all, so callers sweeping several budgets for the same model
         should compute it once and pass it in -- see run_experiments.py).
+
+    save_plot: if True, also renders visualize_spm.py's baseline-vs-COSMA
+        occupancy diagram for this exact run and saves it (default path:
+        visualize_spm.default_out_path() tagged with this run's array size,
+        e.g. spm_plots/model_128kb_64x64.png, so a re-run at a different
+        array size doesn't overwrite the previous plot; override with
+        plot_out_path). Reuses the ILP solve already
+        done above (cosma_Ilp.extract_results()'s `result`) instead of
+        re-solving -- calling visualize_spm.py separately as a second
+        command would pay for the ILP solve twice, expensive on anything
+        Inception-V3-sized. Off by default since run_experiments.py calls
+        run_cosma() in a tight per-budget sweep loop where a plot per call
+        isn't wanted; the CLI below turns it on by default.
     """
+    model_json_path = model_resolver.resolve_model_json(
+        model_json_path, exporter, export_dir, force_export)
+
     nodes, tensors = graph_builder.load_graph(model_json_path)
 
     # Cheap, baseline-independent check first: fail fast on a hopeless
@@ -124,6 +165,7 @@ def run_cosma(model_json_path: str = DEFAULT_MODEL_JSON,
     total_real_retrieve_bytes = 0
     total_ifmap_residency_credit_bytes = 0
     total_ofmap_residency_credit_bytes = 0
+    layer_bound_breakdown = []  # per-layer compute-vs-memory-bound record, see below
     for t in result['ordered_layers']:
         base_s = layer_stats[t]
         cosma_s = cosma_stats[t]
@@ -173,12 +215,33 @@ def run_cosma(model_json_path: str = DEFAULT_MODEL_JSON,
         cosma_compulsory = (cosma_s['ifmap_dram_bytes'] + cosma_s['ofmap_dram_bytes']
                              + cosma_s['filter_dram_bytes'] + idealized_bytes)
 
-        baseline_total_cycles += max(base_s['compute_cycles'],
-                                      baseline_compulsory / bandwidth_bytes_per_cycle)
-        cosma_total_cycles += max(cosma_s['compute_cycles'],
-                                   cosma_compulsory / bandwidth_bytes_per_cycle)
+        # Which side of max(compute_cycles, dram_bytes/bandwidth) actually
+        # wins, per layer -- this is the number the aggregate speedup
+        # figure hides. COSMA's DRAM reduction can only ever turn into a
+        # real speedup on a layer where memory was the bottleneck to begin
+        # with; a layer that's already compute-bound in the baseline stays
+        # exactly as slow no matter how much DRAM traffic COSMA removes.
+        baseline_mem_cycles = baseline_compulsory / bandwidth_bytes_per_cycle
+        cosma_mem_cycles = cosma_compulsory / bandwidth_bytes_per_cycle
+        layer_bound_breakdown.append({
+            't': t, 'op': node.op,
+            'baseline_compute_cycles': base_s['compute_cycles'],
+            'baseline_mem_cycles': baseline_mem_cycles,
+            'baseline_bound': 'memory' if baseline_mem_cycles > base_s['compute_cycles'] else 'compute',
+            'cosma_compute_cycles': cosma_s['compute_cycles'],
+            'cosma_mem_cycles': cosma_mem_cycles,
+            'cosma_bound': 'memory' if cosma_mem_cycles > cosma_s['compute_cycles'] else 'compute',
+        })
+
+        baseline_total_cycles += max(base_s['compute_cycles'], baseline_mem_cycles)
+        cosma_total_cycles += max(cosma_s['compute_cycles'], cosma_mem_cycles)
         baseline_dram_bytes += baseline_compulsory
         cosma_dram_bytes += cosma_compulsory
+
+    baseline_memory_bound_layers = sum(
+        1 for r in layer_bound_breakdown if r['baseline_bound'] == 'memory')
+    cosma_memory_bound_layers = sum(
+        1 for r in layer_bound_breakdown if r['cosma_bound'] == 'memory')
 
     dram_traffic_reduction_pct = (
         100.0 * (baseline_dram_bytes - cosma_dram_bytes) / baseline_dram_bytes
@@ -186,6 +249,16 @@ def run_cosma(model_json_path: str = DEFAULT_MODEL_JSON,
     )
     speedup = (baseline_total_cycles / cosma_total_cycles
                if cosma_total_cycles > 0 else float('inf'))
+
+    plot_path = None
+    if save_plot:
+        baseline_action = visualize_spm.compute_baseline_resident_action(nodes, tensors)
+        plot_path = plot_out_path or visualize_spm.default_out_path(
+            model_json_path, memory_budget_bytes, tag=_array_dims_tag(config_path))
+        visualize_spm.render_comparison(
+            nodes, tensors, baseline_action, result, memory_budget_bytes, plot_path,
+            title=f"{os.path.basename(model_json_path)} -- SPM occupancy: "
+                  f"baseline vs. COSMA @ {memory_budget_bytes / 1024:.2f} KB")
 
     summary = {
         'status': status,
@@ -204,6 +277,10 @@ def run_cosma(model_json_path: str = DEFAULT_MODEL_JSON,
         'speedup': speedup,
         'spm_plan': result['spm_plan'],
         'resident_action': resident_action,
+        'layer_bound_breakdown': layer_bound_breakdown,
+        'baseline_memory_bound_layers': baseline_memory_bound_layers,
+        'cosma_memory_bound_layers': cosma_memory_bound_layers,
+        'plot_path': plot_path,
     }
 
     if verbose:
@@ -228,16 +305,56 @@ def run_cosma(model_json_path: str = DEFAULT_MODEL_JSON,
         print(f"Baseline total cycles: {baseline_total_cycles:.1f}")
         print(f"COSMA total cycles: {cosma_total_cycles:.1f}")
         print(f"Speedup: {speedup:.4f}x")
+        print(f"--- Compute-vs-memory bound breakdown, per layer "
+              f"(max(compute_cycles, dram_bytes/{bandwidth_bytes_per_cycle:.0f})) ---")
+        print(f"Baseline: {baseline_memory_bound_layers}/{len(layer_bound_breakdown)} "
+              f"layers memory-bound")
+        print(f"COSMA:    {cosma_memory_bound_layers}/{len(layer_bound_breakdown)} "
+              f"layers memory-bound")
+        interesting = [r for r in layer_bound_breakdown
+                       if r['baseline_bound'] == 'memory' or r['cosma_bound'] == 'memory']
+        if interesting:
+            print("Layers where memory was (or became) the bottleneck -- these are the "
+                  "only ones where COSMA's DRAM reduction can show up as real speedup:")
+            for r in interesting:
+                print(f"  t={r['t']:>3} {r['op']:<16} "
+                      f"baseline: compute={r['baseline_compute_cycles']:.0f} "
+                      f"mem={r['baseline_mem_cycles']:.0f} [{r['baseline_bound']}]   "
+                      f"cosma: compute={r['cosma_compute_cycles']:.0f} "
+                      f"mem={r['cosma_mem_cycles']:.0f} [{r['cosma_bound']}]")
+        else:
+            print("No layer was ever memory-bound at this array/bandwidth config -- "
+                  "COSMA's DRAM reduction has no bottleneck left to relieve here, "
+                  "regardless of how large it is (see ITERATION_HISTORY.md's array-size "
+                  "discussion).")
+        if plot_path:
+            print(f"Saved SPM occupancy comparison to {plot_path}")
 
     return summary
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--model-json', default=DEFAULT_MODEL_JSON)
+    parser.add_argument('--model-json', default=DEFAULT_MODEL_JSON,
+                         help='Path to model.json, or a raw .tflite file -- a .tflite '
+                              'is auto-exported to model.json and cached under '
+                              '--export-dir (same behavior as run_experiments.py).')
     parser.add_argument('--config', default=DEFAULT_CONFIG)
     parser.add_argument('--budget-kb', type=float, default=128)
-    parser.add_argument('--time-limit', type=float, default=120)
+    parser.add_argument('--time-limit', type=float, default=360)
+    parser.add_argument('--no-plot', action='store_true',
+                         help="Skip saving the baseline-vs-COSMA occupancy PNG "
+                              "(visualize_spm.py's diagram, generated by default).")
+    parser.add_argument('--plot-out', default=None,
+                         help='Override the plot output path (default: '
+                              'cosma/spm_plots/<model>_<budget>kb.png).')
+    parser.add_argument('--exporter', default=model_resolver.DEFAULT_EXPORTER,
+                         help='Path to trim/python_scripts/export_model.py '
+                              '(only needed for .tflite inputs).')
+    parser.add_argument('--export-dir', default=model_resolver.DEFAULT_EXPORT_DIR,
+                         help='Cache directory for .tflite -> model.json exports.')
+    parser.add_argument('--force-export', action='store_true',
+                         help='Re-export even if a cached model.json exists.')
     args = parser.parse_args()
 
     run_cosma(
@@ -245,4 +362,9 @@ if __name__ == '__main__':
         config_path=args.config,
         memory_budget_bytes=int(args.budget_kb * 1024),
         ilp_time_limit_sec=args.time_limit,
+        save_plot=not args.no_plot,
+        plot_out_path=args.plot_out,
+        exporter=args.exporter,
+        export_dir=args.export_dir,
+        force_export=args.force_export,
     )

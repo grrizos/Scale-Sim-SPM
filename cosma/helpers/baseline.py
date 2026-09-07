@@ -1,4 +1,4 @@
-# cosma/baseline.py
+# cosma/helpers/baseline.py
 """
 Drives SCALE-Sim in-process (no subprocess, no intermediate CSV round-trip)
 to get per-layer compute cycles and compulsory DRAM bytes for every layer
@@ -53,10 +53,14 @@ from scalesim.memory.double_buffered_scratchpad_mem import double_buffered_scrat
 from scalesim.memory.cosma_resident_buffers import (
     CosmaResidentReadBuffer, CosmaResidentWriteBuffer)
 
-from topology_builder import build_topology
-from graph_builder import compute_size_bytes
+from .topology_builder import build_topology
+from .graph_builder import compute_size_bytes
 
-HERE = os.path.dirname(os.path.abspath(__file__))
+# cosma/ (one level up from this file's own helpers/ directory) -- kept
+# pointing there, not at helpers/, so the default paths below (and every
+# existing caller relying on them) are unaffected by which subdirectory
+# this module physically lives in.
+HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def _activation_input_tensor_id(layer: dict):
