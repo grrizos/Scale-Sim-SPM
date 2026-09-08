@@ -56,6 +56,7 @@ from matplotlib.lines import Line2D
 from helpers import cosma_Ilp
 from helpers import graph_builder
 from helpers import model_resolver
+from helpers import spm_allocator
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_MODEL_JSON = os.path.join(HERE, 'model.json')
@@ -98,13 +99,18 @@ def compute_baseline_resident_action(nodes, tensors) -> dict:
     return action
 
 
-def solve_ilp_only(nodes, tensors, memory_budget_bytes: int, ilp_time_limit_sec: float = 120) -> dict:
+def solve_ilp_only(nodes, tensors, memory_budget_bytes: int, ilp_time_limit_sec: float = 120,
+                    free_schedule: bool = False) -> dict:
     """
     Steps 1-2,5-7 of run_cosma.run_cosma() only (graph + ILP) -- no
     baseline.py, no SCALE-Sim. On infeasibility or a non-optimal solve,
     bakes compute_structural_minimum_bytes()/compute_mpmf_bytes() into
     the raised error so a failing run immediately reports the right
     budget range instead of a bare pulp status string.
+
+    free_schedule: see cosma_Ilp.build_cosma_model()'s docstring -- lets
+        the ILP choose the operator order itself instead of fixing it to
+        model.json's. Off by default; expect a slower solve when enabled.
     """
     def _bounds_message() -> str:
         floor_b, floor_t = cosma_Ilp.compute_structural_minimum_bytes(nodes, tensors)
@@ -119,7 +125,8 @@ def solve_ilp_only(nodes, tensors, memory_budget_bytes: int, ilp_time_limit_sec:
     except AssertionError as e:
         raise RuntimeError(f"{e}\n{_bounds_message()}") from e
 
-    prob, variables, T, A = cosma_Ilp.build_cosma_model(nodes, tensors, memory_budget_bytes)
+    prob, variables, T, A = cosma_Ilp.build_cosma_model(
+        nodes, tensors, memory_budget_bytes, free_schedule=free_schedule)
     status = cosma_Ilp.solve(prob, time_limit_sec=ilp_time_limit_sec)
     if status != 'Optimal':
         raise RuntimeError(f"COSMA ILP did not solve to optimality: status={status}\n"
@@ -238,7 +245,8 @@ def _render_baseline_panel(ax, nodes, tensors, baseline_action, ylim_bytes: int)
     _style_axes(ax)
 
 
-def _render_cosma_panel(ax, nodes, tensors, result, memory_budget_bytes: int, ylim_bytes: int) -> None:
+def _render_cosma_panel(ax, nodes, tensors, result, memory_budget_bytes: int, ylim_bytes: int,
+                         compacted: bool = False) -> None:
     spm_plan = result['spm_plan']
     resident_action = result['resident_action']
     runs_by_tensor = spm_plan_to_runs(spm_plan)
@@ -269,15 +277,34 @@ def _render_cosma_panel(ax, nodes, tensors, result, memory_budget_bytes: int, yl
     ax.set_xlabel('timestep (layer)')
     ax.set_ylabel('SPM address (bytes)', fontsize=8)
     ax.set_ylim(0, ylim_bytes)
-    ax.set_title(f"COSMA plan @ {memory_budget_bytes / 1024:.2f} KB budget",
-                 fontsize=9, color=_LABEL_COLOR)
+    subtitle = (" -- repacked toward 0 for readability, same plan (see "
+                "compact_spm_plan())" if compacted else
+                " -- solver's own raw addresses (gaps expected, not a bug "
+                "-- see compact_spm_plan())")
+    ax.set_title(f"COSMA plan @ {memory_budget_bytes / 1024:.2f} KB budget{subtitle}",
+                 fontsize=8, color=_LABEL_COLOR)
     _style_axes(ax)
 
 
 def render_comparison(nodes, tensors, baseline_action, result, memory_budget_bytes: int,
-                       out_path: str, title: str = None) -> None:
+                       out_path: str, title: str = None, compact: bool = True) -> None:
     """Two stacked panels, one combined PNG -- the deliverable ('visualization
-    for both plans'), not two separate files. Never calls plt.show()."""
+    for both plans'), not two separate files. Never calls plt.show().
+
+    compact: if True (default), the COSMA panel is rendered from a
+    repacked-toward-0 equivalent of result['spm_plan'] (see
+    spm_allocator.compact_spm_plan()) instead of the solver's own literal
+    addresses -- same plan, same resident_action, purely a readability
+    improvement (COSMA's ILP has no preference at all for compact
+    placement, so the raw addresses tend to scatter with pointless gaps;
+    see compact_spm_plan()'s own docstring). Falls back to the raw
+    addresses (with a printed warning, not a crash) if compaction ever
+    fails -- dynamic storage allocation with variable-size objects is
+    NP-hard in general, so this heuristic is not guaranteed to always
+    succeed, though it has on every model tried so far. Pass False to
+    always see the solver's own literal addresses (e.g. to sanity-check
+    the ILP's own placement choices, not the repacked view).
+    """
     max_t = max(nodes.keys())
     fig, (ax_top, ax_bottom) = plt.subplots(
         2, 1, figsize=(max(10, max_t * 0.35), 10),
@@ -291,15 +318,34 @@ def render_comparison(nodes, tensors, baseline_action, result, memory_budget_byt
     _, baseline_peak_bytes = baseline_timestep_stacks(nodes, tensors, baseline_action)
     ylim_bytes = max(memory_budget_bytes, baseline_peak_bytes)
 
+    cosma_result = result
+    compacted = False
+    if compact:
+        try:
+            compact_plan = spm_allocator.compact_spm_plan(
+                tensors, result['resident_action'], memory_budget_bytes)
+            cosma_result = dict(result, spm_plan=compact_plan)
+            compacted = True
+        except spm_allocator.SpmAllocationError as e:
+            print(f"[visualize_spm] compaction failed, falling back to the "
+                  f"solver's own raw addresses: {e}")
+
     _render_baseline_panel(ax_top, nodes, tensors, baseline_action, ylim_bytes)
-    _render_cosma_panel(ax_bottom, nodes, tensors, result, memory_budget_bytes, ylim_bytes)
+    _render_cosma_panel(ax_bottom, nodes, tensors, cosma_result, memory_budget_bytes, ylim_bytes,
+                         compacted=compacted)
     plt.setp(ax_top.get_xticklabels(), visible=False)
 
     ax_bottom.set_xlim(-0.5, max_t + 1.5)
     tick_step = max(1, max_t // 20)
     ticks = list(range(0, max_t + 1, tick_step))
     ax_bottom.set_xticks(ticks)
-    ax_bottom.set_xticklabels([f"{t}\n{nodes[t].op}" for t in ticks], fontsize=6)
+    # schedule_layer_at_t maps abstract timestep -> real layer id (identity
+    # under a fixed schedule, a real reordering under free_schedule=True --
+    # see cosma_Ilp.extract_results()) -- ticks must be labeled by whichever
+    # layer actually runs at t, not by t itself.
+    schedule_layer_at_t = result.get('schedule_layer_at_t', {t: t for t in nodes})
+    ax_bottom.set_xticklabels(
+        [f"{t}\n{nodes[schedule_layer_at_t[t]].op}" for t in ticks], fontsize=6)
 
     legend_handles = [
         Line2D([], [], marker='v', linestyle='', markerfacecolor=_SPILL_COLOR,
@@ -341,25 +387,41 @@ def print_tensor_table(tensors, baseline_action: dict, result: dict) -> None:
         print(f"{a:>8}  {size:>8}  {base_str:<30}  {cosma_str}")
 
 
-def default_out_path(model_json_path: str, memory_budget_bytes: int, tag: str = None) -> str:
+def default_out_path(model_json_path: str, memory_budget_bytes: int,
+                      array_tag: str = None, schedule_tag: str = None) -> str:
     """
-    cosma/spm_plots/<model-parent-dir-name>_<budget>kb[_<tag>].png
+    cosma/spm_plots/<model>[_<array_tag>]_<budget>kb[_<schedule_tag>].png
 
-    tag: optional extra suffix (e.g. an array-size fingerprint like
-    '64x64') so re-running the same (model, budget) under a different
-    SCALE-Sim config doesn't silently overwrite the previous plot. Left
-    as a caller-supplied string, not read from a config here, since this
-    module deliberately never imports anything under scalesim/ (see the
-    module docstring) -- callers that already have scalesim access
-    (run_cosma.py, run_experiments.py) compute it themselves.
+    No timestamp by design -- re-running the same (model, array config,
+    budget, schedule mode) overwrites its previous plot rather than
+    accumulating one file per run; pass a distinct budget/config/schedule
+    (which this naming already disambiguates) or --out/--plot-out to keep
+    an old one around.
+
+    array_tag: e.g. an array-size fingerprint like '64x64', so re-running
+        under a different SCALE-Sim config doesn't overwrite the previous
+        plot. Left as a caller-supplied string, not read from a config
+        here, since this module deliberately never imports anything under
+        scalesim/ (see the module docstring) -- callers that already have
+        scalesim access (run_cosma.py, run_experiments.py) compute it
+        themselves; visualize_spm.py's own CLI omits it (no scalesim
+        access), so its plots are untagged by array size.
+    schedule_tag: 'S' (static -- model.json's fixed order) or 'D' (dynamic
+        -- free_schedule=True), so a static and a rescheduled run of the
+        same (model, budget) don't overwrite each other.
     """
     parent = os.path.basename(os.path.dirname(os.path.abspath(model_json_path)))
     stem = os.path.splitext(os.path.basename(model_json_path))[0]
     name = parent if parent and parent != 'cosma' else stem
 
     budget_kb_str = f"{memory_budget_bytes / 1024:.3f}".rstrip('0').rstrip('.').replace('.', 'p')
-    suffix = f"_{tag}" if tag else ""
-    return os.path.join(DEFAULT_OUT_DIR, f"{name}_{budget_kb_str}kb{suffix}.png")
+    parts = [name]
+    if array_tag:
+        parts.append(array_tag)
+    parts.append(f"{budget_kb_str}kb")
+    if schedule_tag:
+        parts.append(schedule_tag)
+    return os.path.join(DEFAULT_OUT_DIR, "_".join(parts) + ".png")
 
 
 def print_budget_bounds(nodes, tensors) -> dict:
@@ -375,6 +437,8 @@ def print_budget_bounds(nodes, tensors) -> dict:
           f"at t={floor_t} ({nodes[floor_t].op if floor_t is not None else '-'})")
     print(f"MPMF ceiling (0 spill at/above): {ceil_b:>10d} bytes ({ceil_b / 1024:8.2f} KB) "
           f"at t={ceil_t} ({nodes[ceil_t].op if ceil_t is not None else '-'})")
+    print("(MPMF ceiling above is the fixed-schedule proxy, not the paper's "
+          "true M_P -- pass --true-mpmf for the real thing.)")
     if ceil_b > floor_b:
         print(f"Interesting spill/retrieve range: ({floor_b / 1024:.2f}, {ceil_b / 1024:.2f}) KB")
     else:
@@ -383,6 +447,27 @@ def print_budget_bounds(nodes, tensors) -> dict:
 
     return {'structural_minimum_bytes': floor_b, 'structural_minimum_t': floor_t,
             'mpmf_bytes': ceil_b, 'mpmf_t': ceil_t}
+
+
+def print_true_mpmf(nodes, tensors, m_r_bytes: int, time_limit_sec: float = None) -> dict:
+    """
+    The paper's real M_P (§III-E1/Eq.13-15, cosma_Ilp.compute_true_mpmf_bytes()
+    -- an actual free-schedule ILP solve, not print_budget_bounds()'s instant
+    fixed-schedule proxy), plus the derived M_H = (M_R + M_P) / 2. Opt-in
+    (--true-mpmf) since this pays for a real solve -- can be slow on a large
+    model, unlike everything else --bounds-only prints. m_r_bytes is passed
+    in (from print_budget_bounds()'s own already-computed M_R) rather than
+    recomputed, since M_H needs it.
+    """
+    true_mp_bytes, schedule = cosma_Ilp.compute_true_mpmf_bytes(
+        nodes, tensors, time_limit_sec=time_limit_sec)
+    m_h_bytes = (m_r_bytes + true_mp_bytes) / 2
+
+    print(f"True M_P (real ILP solve, §III-E1/Eq.13-15): {true_mp_bytes:>10d} bytes "
+          f"({true_mp_bytes / 1024:8.2f} KB)")
+    print(f"M_H = (M_R + M_P) / 2:                        {m_h_bytes:>13.1f} bytes "
+          f"({m_h_bytes / 1024:8.2f} KB)")
+    return {'true_mpmf_bytes': true_mp_bytes, 'm_h_bytes': m_h_bytes, 'schedule': schedule}
 
 
 def main():
@@ -405,10 +490,26 @@ def main():
     parser.add_argument('--bounds-only', action='store_true',
                          help='Print the M_R floor / MPMF ceiling and exit -- no ILP '
                               'solve, no plot, no SCALE-Sim.')
+    parser.add_argument('--true-mpmf', action='store_true',
+                         help='With --bounds-only, also compute the paper\'s real M_P '
+                              '(free-schedule ILP solve, not the instant fixed-schedule '
+                              'proxy) and derived M_H. Not instant -- pays for a real '
+                              'solve, can be slow on a large model.')
     parser.add_argument('--out', default=None,
                          help='Output PNG path (default: cosma/spm_plots/<model>_<budget>kb.png).')
     parser.add_argument('--time-limit', type=float, default=120,
                          help='CBC solve time limit, seconds (default: 120).')
+    parser.add_argument('--free-schedule', action='store_true',
+                         help="Let the ILP choose the operator schedule itself instead of "
+                              "fixing it to model.json's own order -- see "
+                              "cosma_Ilp.build_cosma_model()'s free_schedule docstring. "
+                              "Ignored with --bounds-only.")
+    parser.add_argument('--raw-addresses', action='store_true',
+                         help="Show the solver's own literal SPM addresses in the COSMA "
+                              "panel instead of the default repacked-toward-0 view -- "
+                              "nothing in COSMA's ILP rewards compact placement, so the "
+                              "raw addresses tend to scatter with pointless gaps (see "
+                              "spm_allocator.compact_spm_plan()). Ignored with --bounds-only.")
     args = parser.parse_args()
 
     model_json_path = model_resolver.resolve_model_json(
@@ -416,17 +517,24 @@ def main():
     nodes, tensors = graph_builder.load_graph(model_json_path)
 
     if args.bounds_only:
-        print_budget_bounds(nodes, tensors)
+        bounds = print_budget_bounds(nodes, tensors)
+        if args.true_mpmf:
+            print_true_mpmf(nodes, tensors, bounds['structural_minimum_bytes'],
+                             time_limit_sec=args.time_limit)
         return
 
     memory_budget_bytes = int(args.budget_kb * 1024)
     baseline_action = compute_baseline_resident_action(nodes, tensors)
-    result = solve_ilp_only(nodes, tensors, memory_budget_bytes, args.time_limit)
+    result = solve_ilp_only(nodes, tensors, memory_budget_bytes, args.time_limit,
+                             free_schedule=args.free_schedule)
 
-    out_path = args.out or default_out_path(model_json_path, memory_budget_bytes)
+    out_path = args.out or default_out_path(
+        model_json_path, memory_budget_bytes,
+        schedule_tag='D' if args.free_schedule else 'S')
     render_comparison(nodes, tensors, baseline_action, result, memory_budget_bytes, out_path,
                        title=f"{os.path.basename(model_json_path)} -- SPM occupancy: "
-                             f"baseline vs. COSMA")
+                             f"baseline vs. COSMA",
+                       compact=not args.raw_addresses)
     print_tensor_table(tensors, baseline_action, result)
     print(f"\nSaved SPM occupancy comparison to {out_path}")
 

@@ -43,7 +43,7 @@ Two entry points:
 """
 import json
 import os
-from typing import Dict
+from typing import Dict, List, Tuple
 
 from scalesim.scale_config import scale_config
 from scalesim.topology_utils import topologies
@@ -168,23 +168,30 @@ def _make_memory_system(config, topo, layer_id: int,
     return mem
 
 
-def _simulate_layer(config, topo, layout, row: int, layer: dict,
+def _simulate_layer(config, topo, layout, row: int, layer: dict, t: int,
                      tensor_shapes: Dict[int, dict], verbose: bool,
                      resident_action: dict = None) -> dict:
     """
     Runs one conv-like layer and returns its {compute_cycles,
     ifmap_dram_bytes, filter_dram_bytes, ofmap_dram_bytes}.
 
+    t: the abstract schedule timestep this layer runs at -- resident_action/
+    spm_plan are keyed by (tensor_id, t) from cosma_Ilp.extract_results(),
+    NOT by layer id; the two only coincide under a fixed schedule. Under
+    free_schedule=True they can differ, so this must be the caller's real
+    schedule position, not layer['id'] (see _run_layers()'s `schedule`
+    param).
+
     resident_action: None for the plain, COSMA-unaware baseline (every
     fetch/drain simulated normally). When given (a
-    {(tensor_id, layer_id): 'C'|'P'|'R'|'S'} map from
-    cosma_Ilp.extract_results()), this layer's ifmap read is installed as
-    a genuine zero-cost hit when the activation input is resident via 'P'
-    (COSMA says it's already on-chip -- no real event to simulate), and
-    the ofmap write is always installed as staying on-chip (a layer's own
-    freshly-created output never needs a DRAM round-trip in COSMA's
-    model -- see cosma_resident_buffers.py's docstring on Eq.3). This is
-    what run_cosma_aware() uses; run_baseline() always passes None.
+    {(tensor_id, t): 'C'|'P'|'R'|'S'} map from cosma_Ilp.extract_results()),
+    this layer's ifmap read is installed as a genuine zero-cost hit when
+    the activation input is resident via 'P' (COSMA says it's already
+    on-chip -- no real event to simulate), and the ofmap write is always
+    installed as staying on-chip (a layer's own freshly-created output
+    never needs a DRAM round-trip in COSMA's model -- see
+    cosma_resident_buffers.py's docstring on Eq.3). This is what
+    run_cosma_aware() uses; run_baseline() always passes None.
     """
     ifmap_bytes, ofmap_bytes, filter_bytes = _layer_operand_bytes(layer, tensor_shapes)
 
@@ -192,7 +199,7 @@ def _simulate_layer(config, topo, layout, row: int, layer: dict,
     if resident_action is not None:
         ifmap_id = _activation_input_tensor_id(layer)
         if ifmap_id is not None:
-            ifmap_resident = resident_action.get((ifmap_id, layer['id'])) == 'P'
+            ifmap_resident = resident_action.get((ifmap_id, t)) == 'P'
 
     mem_sys = _make_memory_system(
         config, topo, row, ifmap_bytes, filter_bytes, ofmap_bytes, verbose,
@@ -223,7 +230,21 @@ def _simulate_layer(config, topo, layout, row: int, layer: dict,
 def _run_layers(model_json_path: str, config_path: str,
                  topology_csv_path: str, verbose: bool,
                  resident_action: dict = None, spm_plan: dict = None,
-                 tensors: dict = None, memory_budget_bytes: int = None) -> Dict[int, dict]:
+                 tensors: dict = None, memory_budget_bytes: int = None,
+                 schedule: List[Tuple[int, int]] = None) -> Dict[int, dict]:
+    """
+    schedule: optional [(t, layer_id), ...] execution order, sorted by t --
+        from cosma_Ilp.extract_results()['schedule_layer_at_t'].items()
+        under free_schedule=True (see cosma_Ilp.build_cosma_model()). None
+        (the default -- always what run_baseline() uses) falls back to
+        model.json's own layer order, t == position == layer id, exactly
+        today's behavior. This is what lets run_cosma_aware() actually
+        simulate a reordered schedule instead of always assuming
+        t == layer_id: SpmAllocator.step() must be called with the same
+        abstract t that resident_action/spm_plan were keyed by, in
+        strictly increasing order, which is no longer model.json's own
+        layer order once the schedule is free.
+    """
     if resident_action is not None:
         assert spm_plan is not None and tensors is not None and memory_budget_bytes is not None, (
             "run_cosma_aware()'s plan (resident_action/spm_plan/tensors/"
@@ -248,14 +269,19 @@ def _run_layers(model_json_path: str, config_path: str,
     with open(model_json_path, 'r') as f:
         model = json.load(f)
     tensor_shapes: Dict[int, dict] = {t['id']: t for t in model['tensors']}
+    layer_by_id: Dict[int, dict] = {layer['id']: layer for layer in model['layers']}
+
+    if schedule is None:
+        # Today's behavior: model.json's own order, t == position == layer id.
+        schedule = [(i, layer['id']) for i, layer in enumerate(model['layers'])]
 
     allocator = None
     if resident_action is not None:
         allocator = SpmAllocator(tensors, spm_plan, resident_action, memory_budget_bytes)
 
     row_to_stats: Dict[int, dict] = {}
-    for layer in model['layers']:
-        lid = layer['id']
+    for t, lid in schedule:
+        layer = layer_by_id[lid]
         if allocator is not None:
             # Replay every timestep's C/P/S/R transitions, including
             # non-conv ones (ADD, DENSE, ...) below -- a tensor can be
@@ -263,12 +289,14 @@ def _run_layers(model_json_path: str, config_path: str,
             # too, and skipping those would silently corrupt the
             # allocator's live state. Raises SpmAllocationError loudly if
             # the solved plan is ever physically inconsistent -- see
-            # spm_allocator.py's module docstring.
-            allocator.step(lid)
+            # spm_allocator.py's module docstring. Called with t (the
+            # abstract schedule timestep resident_action/spm_plan are
+            # keyed by), not lid -- those differ once schedule is free.
+            allocator.step(t)
         if lid not in layer_id_to_row:
             continue
         row_to_stats[layer_id_to_row[lid]] = _simulate_layer(
-            config, topo, layout, layer_id_to_row[lid], layer, tensor_shapes,
+            config, topo, layout, layer_id_to_row[lid], layer, t, tensor_shapes,
             verbose, resident_action=resident_action)
 
     if allocator is not None:
@@ -312,7 +340,8 @@ def run_baseline(model_json_path: str, config_path: str,
 def run_cosma_aware(model_json_path: str, config_path: str, resident_action: dict,
                      spm_plan: dict, tensors: dict, memory_budget_bytes: int,
                      topology_csv_path: str = None,
-                     verbose: bool = False) -> Dict[int, dict]:
+                     verbose: bool = False,
+                     schedule: List[Tuple[int, int]] = None) -> Dict[int, dict]:
     """
     Same per-layer numbers as run_baseline(), except driven by COSMA's
     actual plan (resident_action, from cosma_Ilp.extract_results()): a
@@ -322,6 +351,11 @@ def run_cosma_aware(model_json_path: str, config_path: str, resident_action: dic
     see _simulate_layer()'s docstring. Unlike run_baseline(), this does
     depend on the SPM budget (indirectly, via which resident_action was
     solved for) and must be re-run per budget.
+
+    schedule: see _run_layers()'s docstring -- required (not None) whenever
+    resident_action came from a free_schedule=True solve, since t no longer
+    equals layer id in that case; omit it (or pass None) for a
+    free_schedule=False plan, where model.json's own order is correct.
 
     spm_plan/tensors/memory_budget_bytes (also from extract_results(), plus
     graph_builder.load_graph()'s own tensors dict, plus the same budget the
@@ -334,7 +368,8 @@ def run_cosma_aware(model_json_path: str, config_path: str, resident_action: dic
     """
     return _run_layers(model_json_path, config_path, topology_csv_path, verbose,
                         resident_action=resident_action, spm_plan=spm_plan,
-                        tensors=tensors, memory_budget_bytes=memory_budget_bytes)
+                        tensors=tensors, memory_budget_bytes=memory_budget_bytes,
+                        schedule=schedule)
 
 
 if __name__ == '__main__':

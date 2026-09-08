@@ -262,3 +262,148 @@ class SpmAllocator:
 
     def steps_taken(self) -> int:
         return self._steps_taken
+
+
+def _lowest_fit_address(occupied: List[Tuple[int, int]], size: int,
+                         budget: int) -> int:
+    """
+    Lowest free address in [0, budget) with `size` free contiguous bytes,
+    given `occupied` ((address, size) pairs) already placed -- classic
+    lowest-fit interval packing: scan gaps left to right, return the
+    first one that fits. Raises SpmAllocationError if none does.
+    """
+    cursor = 0
+    for address, occ_size in sorted(occupied):
+        if address - cursor >= size:
+            return cursor
+        cursor = max(cursor, address + occ_size)
+    if budget - cursor >= size:
+        return cursor
+    raise SpmAllocationError(
+        f"compact_spm_plan(): no {size}-byte gap fits in a {budget}-byte "
+        f"budget against current occupants {sorted(occupied)} -- a real "
+        f"dynamic-storage-allocation heuristic failure (fragmentation),"
+        f"not necessarily a bug -- see compact_spm_plan()'s docstring; "
+        f"the caller should fall back to the original spm_plan.",
+        reason='compaction_overflow')
+
+
+def _residency_episodes(tensors: Dict[int, object],
+                         resident_action: Dict[Tuple[int, int], str]
+                         ) -> List[Tuple[int, int, int]]:
+    """
+    Maximal contiguous (by consecutive integer t) runs of C/P/R residency
+    per tensor -- an "episode" needs one stable address for its whole
+    span (Eq.11's own address-pinning semantics: a tensor's address only
+    has to stay fixed while it's continuously resident). A tensor
+    spilled and later retrieved (Eq.8: at most once) gets two
+    independent episodes, each placeable at a different address, exactly
+    like a real solve already allows.
+
+    Returns a list of (tensor_id, t_start, t_end), t_end inclusive.
+    """
+    ts_by_tensor: Dict[int, List[int]] = {}
+    for (a, t), action in resident_action.items():
+        if action in ('C', 'P', 'R'):
+            ts_by_tensor.setdefault(a, []).append(t)
+
+    episodes: List[Tuple[int, int, int]] = []
+    for a, ts in ts_by_tensor.items():
+        ts.sort()
+        start = prev = ts[0]
+        for t in ts[1:]:
+            if t == prev + 1:
+                prev = t
+            else:
+                episodes.append((a, start, prev))
+                start = prev = t
+        episodes.append((a, start, prev))
+    return episodes
+
+
+def compact_spm_plan(tensors: Dict[int, object],
+                      resident_action: Dict[Tuple[int, int], str],
+                      memory_budget_bytes: int) -> Dict[Tuple[int, int], int]:
+    """
+    Re-addresses a solved COSMA plan for VISUALIZATION only -- same
+    resident_action (which tensor is C/P/R/S at which timestep, never
+    touched), but repacked toward address 0 instead of whatever arbitrary
+    addresses the ILP's own `L` variable happened to land on.
+
+    Why this exists: cosma_Ilp.py's Eq.9-11 only ever constrain `L` to fit
+    the budget and not overlap -- nothing in Eq.12's objective involves
+    `L` at all (verified against the paper's own text: see
+    docs/STATUS.md's "nothing rewards compact placement" note), so CBC
+    returns any feasible address assignment with zero preference for
+    compactness. Confirmed directly on a real solve (ResNet-20-CIFAR10 @
+    256KB): a single resident tensor at t=0, with nothing else resident
+    and the whole budget free, landed at address 65536 -- address 0 sat
+    empty for no reason. The resulting plot shows scattered boxes with
+    pointless gaps, technically correct but confusing to read.
+
+    Algorithm: offline, size-first interval placement, not a timestep-by-
+    timestep online greedy. Since resident_action is known for the whole
+    horizon up front (this is not actually a streaming problem), each
+    tensor's full C/P/R lifetime is first grouped into "episodes"
+    (_residency_episodes() -- a stable-address span, per Eq.11), then
+    episodes are placed largest-first (ties broken by start time, then
+    tensor id, for a deterministic result), each at the lowest address
+    free for its *entire* span against every already-placed episode it
+    overlaps in time. This was NOT the first design tried here: an
+    earlier timestep-by-timestep online greedy (commit history) failed
+    outright on the small custom DenseNet fixture's real spill/retrieve
+    plan (two 160KB tensors placed with a 64KB gap between them, too
+    fragmented for a later 192KB tensor to fit even though 235KB of free
+    space existed in total) -- placing large, long-lived tensors first
+    avoids exactly that failure mode by giving them first pick of
+    contiguous space before smaller/shorter-lived ones can wedge into it.
+
+    A repacking is always feasible at the SAME budget in principle -- it
+    changes only WHERE each tensor sits, never which tensors are resident
+    when (resident_action, held fixed) or how many bytes are
+    simultaneously occupied at any timestep (a property of
+    resident_action/tensor sizes alone, and Eq.9 already guarantees that
+    total never exceeds budget). In practice, general dynamic storage
+    allocation (variable-size objects, live ranges known in advance) is
+    NP-hard -- the same reason the real placement needs an ILP at all --
+    so even this smarter heuristic is not a proof it will always succeed;
+    the result is self-verified below rather than assumed, and the
+    caller should fall back to the original spm_plan on
+    SpmAllocationError (see visualize_spm.py).
+
+    Returns a new spm_plan dict, (tensor_id, t) -> address, the same shape
+    cosma_Ilp.extract_results()['spm_plan'] has -- a drop-in replacement
+    for rendering. Self-verified before returning by replaying the result
+    back through a real SpmAllocator against the same resident_action --
+    raises SpmAllocationError (not a silent wrong answer) if that replay
+    ever disagrees, matching this module's own "verify, don't trust"
+    practice for everything else it does.
+    """
+    episodes = _residency_episodes(tensors, resident_action)
+    episodes.sort(key=lambda e: (-tensors[e[0]].size_bytes, e[1], e[0]))
+
+    placed: List[Tuple[int, int, int, int]] = []  # (address, size, t_start, t_end)
+    address_by_episode: Dict[Tuple[int, int], int] = {}  # (tensor_id, t_start) -> address
+
+    for (a, t_start, t_end) in episodes:
+        size = tensors[a].size_bytes
+        conflicting = [(addr, sz) for (addr, sz, s, e) in placed
+                       if s <= t_end and t_start <= e]
+        address = _lowest_fit_address(conflicting, size, memory_budget_bytes)
+        placed.append((address, size, t_start, t_end))
+        address_by_episode[(a, t_start)] = address
+
+    episode_start_of: Dict[Tuple[int, int], int] = {}
+    for (a, t_start, t_end) in episodes:
+        for t in range(t_start, t_end + 1):
+            episode_start_of[(a, t)] = t_start
+
+    spm_plan: Dict[Tuple[int, int], int] = {}
+    for (a, t), action in resident_action.items():
+        if action in ('C', 'P', 'R'):
+            spm_plan[(a, t)] = address_by_episode[(a, episode_start_of[(a, t)])]
+
+    verifier = SpmAllocator(tensors, spm_plan, resident_action, memory_budget_bytes)
+    verifier.replay_all()
+
+    return spm_plan

@@ -89,6 +89,16 @@ def _array_dims_tag(config_path: str) -> str:
     return f"{arr_row}x{arr_col}"
 
 
+def _schedule_tag(free_schedule: bool) -> str:
+    """'S' (static -- model.json's fixed topological order) or 'D'
+    (dynamic -- the ILP's own chosen order, build_cosma_model()'s
+    free_schedule=True) -- appended to the default plot filename so a
+    static-schedule run and a rescheduled run of the same (model, budget)
+    never silently overwrite each other (see run_experiments.py's
+    identical tag for logs/CSVs, added for the same reason)."""
+    return 'D' if free_schedule else 'S'
+
+
 def run_cosma(model_json_path: str = DEFAULT_MODEL_JSON,
               config_path: str = DEFAULT_CONFIG,
               memory_budget_bytes: int = 128 * 1024,
@@ -100,7 +110,9 @@ def run_cosma(model_json_path: str = DEFAULT_MODEL_JSON,
               plot_out_path: str = None,
               exporter: str = model_resolver.DEFAULT_EXPORTER,
               export_dir: str = model_resolver.DEFAULT_EXPORT_DIR,
-              force_export: bool = False) -> dict:
+              force_export: bool = False,
+              free_schedule: bool = False,
+              compact_plot: bool = True) -> dict:
     """
     model_json_path may also be a raw .tflite file -- it's auto-exported
     to model.json and cached under export_dir (see helpers/model_resolver.py,
@@ -112,18 +124,40 @@ def run_cosma(model_json_path: str = DEFAULT_MODEL_JSON,
         at all, so callers sweeping several budgets for the same model
         should compute it once and pass it in -- see run_experiments.py).
 
+    free_schedule: False (default) reproduces every previously validated
+        result byte-identically -- the layer order stays fixed to
+        model.json's own topological order. True lets cosma_Ilp's ILP
+        choose the operator schedule itself (the paper's "Combined
+        **Scheduling**..." half, see cosma_Ilp.build_cosma_model()'s
+        free_schedule docstring), and that chosen order drives this same
+        real SCALE-Sim re-simulation below -- not just an isolated bound.
+        Expect a real solve-time jump; this is the paper's own documented
+        worst case.
+
     save_plot: if True, also renders visualize_spm.py's baseline-vs-COSMA
         occupancy diagram for this exact run and saves it (default path:
-        visualize_spm.default_out_path() tagged with this run's array size,
-        e.g. spm_plots/model_128kb_64x64.png, so a re-run at a different
-        array size doesn't overwrite the previous plot; override with
-        plot_out_path). Reuses the ILP solve already
+        visualize_spm.default_out_path() tagged with this run's array size
+        and S(tatic)/D(ynamic) schedule mode, e.g.
+        spm_plots/model_64x64_128kb_S.png (free_schedule=False) or
+        spm_plots/model_64x64_128kb_D.png (free_schedule=True) -- no
+        timestamp, so re-running the exact same (model, array, budget,
+        schedule) overwrites its previous plot rather than accumulating
+        one file per run; override with plot_out_path to keep an old one
+        around). Reuses the ILP solve already
         done above (cosma_Ilp.extract_results()'s `result`) instead of
         re-solving -- calling visualize_spm.py separately as a second
         command would pay for the ILP solve twice, expensive on anything
         Inception-V3-sized. Off by default since run_experiments.py calls
         run_cosma() in a tight per-budget sweep loop where a plot per call
         isn't wanted; the CLI below turns it on by default.
+
+    compact_plot: if True (default), the saved plot's COSMA panel is
+        repacked toward address 0 for readability (see
+        visualize_spm.render_comparison()'s `compact` param /
+        spm_allocator.compact_spm_plan()) -- COSMA's ILP has no preference
+        at all for compact placement, so the solver's own literal
+        addresses tend to scatter with pointless gaps. Pass False to see
+        those raw addresses instead.
     """
     model_json_path = model_resolver.resolve_model_json(
         model_json_path, exporter, export_dir, force_export)
@@ -142,24 +176,28 @@ def run_cosma(model_json_path: str = DEFAULT_MODEL_JSON,
         layer_stats = baseline.run_baseline(model_json_path, config_path)
 
     prob, variables, T, A = cosma_Ilp.build_cosma_model(
-        nodes, tensors, memory_budget_bytes=memory_budget_bytes)
+        nodes, tensors, memory_budget_bytes=memory_budget_bytes,
+        free_schedule=free_schedule)
     status = cosma_Ilp.solve(prob, time_limit_sec=ilp_time_limit_sec)
     if status != 'Optimal':
         raise RuntimeError(f"COSMA ILP did not solve to optimality: status={status}")
 
     result = cosma_Ilp.extract_results(variables, T, A, tensors)
     resident_action = result['resident_action']
+    schedule = sorted(result['schedule_layer_at_t'].items())  # [(t, layer_id), ...]
 
     # Real, engine-driven second simulation pass -- see module docstring.
     # Budget-dependent (via resident_action), so this always re-runs.
     # spm_plan/tensors/memory_budget_bytes drive a live SpmAllocator replay
     # alongside the simulation -- an independent, physically-checked proof
     # that resident_action's claims are actually realizable at this budget,
-    # not just trusted (see helpers/spm_allocator.py).
+    # not just trusted (see helpers/spm_allocator.py). `schedule` is the
+    # ILP's own chosen execution order (identity under free_schedule=False,
+    # real reordering under True -- see cosma_Ilp.extract_results()).
     cosma_stats = baseline.run_cosma_aware(
         model_json_path, config_path, resident_action,
         spm_plan=result['spm_plan'], tensors=tensors,
-        memory_budget_bytes=memory_budget_bytes)
+        memory_budget_bytes=memory_budget_bytes, schedule=schedule)
 
     CONV_LIKE_OPS = ('CONV2D', 'DEPTHWISE_CONV2D')
 
@@ -173,10 +211,13 @@ def run_cosma(model_json_path: str = DEFAULT_MODEL_JSON,
     total_ifmap_residency_credit_bytes = 0
     total_ofmap_residency_credit_bytes = 0
     layer_bound_breakdown = []  # per-layer compute-vs-memory-bound record, see below
-    for t in result['ordered_layers']:
-        base_s = layer_stats[t]
-        cosma_s = cosma_stats[t]
-        node = nodes[t]
+    # (t, lid): t is the abstract schedule timestep resident_action/spm_plan
+    # are keyed by, lid is the real layer id -- they coincide under
+    # free_schedule=False, but not under True (see cosma_Ilp.extract_results()).
+    for t, lid in schedule:
+        base_s = layer_stats[lid]
+        cosma_s = cosma_stats[lid]
+        node = nodes[lid]
 
         # A retrieved tensor only has a *real* SCALE-Sim number to draw on
         # when it's the tracked activation input of a conv-like layer --
@@ -231,7 +272,7 @@ def run_cosma(model_json_path: str = DEFAULT_MODEL_JSON,
         baseline_mem_cycles = baseline_compulsory / bandwidth_bytes_per_cycle
         cosma_mem_cycles = cosma_compulsory / bandwidth_bytes_per_cycle
         layer_bound_breakdown.append({
-            't': t, 'op': node.op,
+            't': t, 'layer_id': lid, 'op': node.op,
             'baseline_compute_cycles': base_s['compute_cycles'],
             'baseline_mem_cycles': baseline_mem_cycles,
             'baseline_bound': 'memory' if baseline_mem_cycles > base_s['compute_cycles'] else 'compute',
@@ -244,6 +285,18 @@ def run_cosma(model_json_path: str = DEFAULT_MODEL_JSON,
         cosma_total_cycles += max(cosma_s['compute_cycles'], cosma_mem_cycles)
         baseline_dram_bytes += baseline_compulsory
         cosma_dram_bytes += cosma_compulsory
+
+    # The paper's own primary metric (§V-A2): "non-compulsory off-chip data
+    # access volume" -- every spill event's bytes plus every retrieve
+    # event's bytes, full stop, regardless of whether SCALE-Sim could
+    # simulate that particular retrieve for real or not (that real/idealized
+    # split is an artifact of this codebase's own accounting, not something
+    # the paper's metric distinguishes). See docs/results_plan.md.
+    total_non_compulsory_access_bytes = (
+        total_idealized_spill_bytes
+        + total_idealized_retrieve_bytes
+        + total_real_retrieve_bytes
+    )
 
     baseline_memory_bound_layers = sum(
         1 for r in layer_bound_breakdown if r['baseline_bound'] == 'memory')
@@ -261,11 +314,14 @@ def run_cosma(model_json_path: str = DEFAULT_MODEL_JSON,
     if save_plot:
         baseline_action = visualize_spm.compute_baseline_resident_action(nodes, tensors)
         plot_path = plot_out_path or visualize_spm.default_out_path(
-            model_json_path, memory_budget_bytes, tag=_array_dims_tag(config_path))
+            model_json_path, memory_budget_bytes,
+            array_tag=_array_dims_tag(config_path),
+            schedule_tag=_schedule_tag(free_schedule))
         visualize_spm.render_comparison(
             nodes, tensors, baseline_action, result, memory_budget_bytes, plot_path,
             title=f"{os.path.basename(model_json_path)} -- SPM occupancy: "
-                  f"baseline vs. COSMA @ {memory_budget_bytes / 1024:.2f} KB")
+                  f"baseline vs. COSMA @ {memory_budget_bytes / 1024:.2f} KB",
+            compact=compact_plot)
 
     summary = {
         'status': status,
@@ -278,6 +334,7 @@ def run_cosma(model_json_path: str = DEFAULT_MODEL_JSON,
         'total_idealized_spill_bytes': total_idealized_spill_bytes,
         'total_idealized_retrieve_bytes': total_idealized_retrieve_bytes,
         'total_real_retrieve_bytes': total_real_retrieve_bytes,
+        'total_non_compulsory_access_bytes': total_non_compulsory_access_bytes,
         'total_ifmap_residency_credit_bytes': total_ifmap_residency_credit_bytes,
         'total_ofmap_residency_credit_bytes': total_ofmap_residency_credit_bytes,
         'dram_traffic_reduction_pct': dram_traffic_reduction_pct,
@@ -306,6 +363,9 @@ def run_cosma(model_json_path: str = DEFAULT_MODEL_JSON,
               f"layer, no SCALE-Sim analog): {total_idealized_retrieve_bytes}")
         print(f"Real (SCALE-Sim-simulated) retrieve DRAM bytes: "
               f"{total_real_retrieve_bytes}")
+        print(f"Non-compulsory off-chip access volume (paper's own primary "
+              f"metric, §V-A2 -- spill+retrieve bytes, real or idealized): "
+              f"{total_non_compulsory_access_bytes}")
         print(f"Baseline DRAM bytes (no unified SPM): {baseline_dram_bytes}")
         print(f"COSMA DRAM bytes: {cosma_dram_bytes}")
         print(f"DRAM traffic reduction: {dram_traffic_reduction_pct:.1f}%")
@@ -324,7 +384,7 @@ def run_cosma(model_json_path: str = DEFAULT_MODEL_JSON,
             print("Layers where memory was (or became) the bottleneck -- these are the "
                   "only ones where COSMA's DRAM reduction can show up as real speedup:")
             for r in interesting:
-                print(f"  t={r['t']:>3} {r['op']:<16} "
+                print(f"  t={r['t']:>3} (layer {r['layer_id']}) {r['op']:<16} "
                       f"baseline: compute={r['baseline_compute_cycles']:.0f} "
                       f"mem={r['baseline_mem_cycles']:.0f} [{r['baseline_bound']}]   "
                       f"cosma: compute={r['cosma_compute_cycles']:.0f} "
@@ -367,6 +427,18 @@ if __name__ == '__main__':
                          help='Cache directory for .tflite -> model.json exports.')
     parser.add_argument('--force-export', action='store_true',
                          help='Re-export even if a cached model.json exists.')
+    parser.add_argument('--free-schedule', action='store_true',
+                         help="Let the ILP choose the operator schedule itself "
+                              "(the paper's \"Combined Scheduling...\" half), instead of "
+                              "fixing it to model.json's own topological order. Off by "
+                              "default -- expect a real solve-time jump when enabled "
+                              "(the paper's own documented worst case).")
+    parser.add_argument('--raw-addresses', action='store_true',
+                         help="Show the solver's own literal SPM addresses in the saved "
+                              "plot's COSMA panel instead of the default repacked-toward-0 "
+                              "view -- nothing in COSMA's ILP rewards compact placement, so "
+                              "the raw addresses tend to scatter with pointless gaps (see "
+                              "spm_allocator.compact_spm_plan()). Ignored with --no-plot.")
     args = parser.parse_args()
 
     run_cosma(
@@ -379,4 +451,6 @@ if __name__ == '__main__':
         exporter=args.exporter,
         export_dir=args.export_dir,
         force_export=args.force_export,
+        free_schedule=args.free_schedule,
+        compact_plot=not args.raw_addresses,
     )

@@ -362,8 +362,8 @@ example).
 |---|---|
 | Eq.1–4 (create/preserve/spill/retrieve state machine) | ✅ implemented |
 | Eq.5 (operator inputs must be resident) | ✅ implemented |
-| Eq.6 (sibling tensors created together) | ✅ true by construction (fixed schedule) |
-| Eq.7 (create exactly once) | ✅ true by construction (fixed schedule) |
+| Eq.6 (sibling tensors created together) | ✅ true by construction (fixed schedule); real constraint under `free_schedule=True` (item 32) |
+| Eq.7 (create exactly once) | ✅ true by construction (fixed schedule); real constraint under `free_schedule=True` (item 32) |
 | Eq.8 (spill at most once) | ✅ implemented |
 | Eq.9 (fits within budget) | ✅ implemented |
 | Eq.10 (non-overlapping placement via `u`/`d`) | ✅ implemented, incl. mutex |
@@ -371,7 +371,7 @@ example).
 | Eq.12 (objective: minimize spill+retrieve bytes) | ✅ implemented |
 | §III-F overlap-filtering to control ILP size | ✅ implemented |
 | §III-E2 Fixed-Schedule mode (Eq.16–17) | ✅ this is what we built |
-| §III-B/C free operator scheduling (the "Combined **Scheduling**..." part) | ❌ **not implemented** — see §5 |
+| §III-B/C free operator scheduling (the "Combined **Scheduling**..." part) | ✅ implemented (`free_schedule=True`, opt-in, default off) — see item 32; §5 below is the original plan, now executed |
 | §III-E1 alternate objective (minimize peak memory footprint) | ❌ not implemented (different use case, not needed here) |
 | §IV Divide-and-conquer heuristic for NAS-scale graphs | ❌ not implemented (out of scope per user) |
 | Gurobi solver | ❌ using PuLP/CBC instead (same ILP semantics, slower solve) |
@@ -385,7 +385,13 @@ combined input+output size) is always `Infeasible` by design — the paper
 never tests below `M_R` either. See §2's Inception-V3 note for a concrete
 case of this.
 
-## 5. What's missing: operator rescheduling
+## 5. Operator rescheduling — implemented, see item 32
+
+This section was originally written as a forward-looking plan while the
+gap was still open. Item 32 (Appendix) implemented almost exactly this
+8-point plan under `build_cosma_model(..., free_schedule=True)`, opt-in
+with default `False`. Left below unedited as the original plan record —
+it reads as a to-do list, but every point in it is now done.
 
 Right now the layer execution order is fixed to `model.json`'s
 topological order. COSMA only optimizes memory allocation and tensor
@@ -429,8 +435,8 @@ before investing further, rather than assuming either way.
 | `visualize_spm.py` | Entry point: fast (no SCALE-Sim), ILP-only debug tool: `--bounds-only` prints M_R/MPMF instantly; otherwise renders a 2-panel PNG (baseline vs. COSMA SPM occupancy over time). Accepts `.tflite` directly (auto-exported via `model_resolver`, same as the other two entry points) |
 | `helpers/graph_builder.py` | `model.json` → `nodes`/`tensors` dicts |
 | `helpers/topology_builder.py` | `model.json` → SCALE-Sim topology CSV + layer-id↔row map |
-| `helpers/baseline.py` | Per-layer SCALE-Sim simulation; `run_baseline()` (plain) and `run_cosma_aware()` (COSMA-plan-driven, real engine numbers) |
-| `helpers/cosma_Ilp.py` | The ILP itself (Eq.1–12, fixed-schedule mode); also `compute_structural_minimum_bytes`/`compute_mpmf_bytes` (M_R/MPMF, solve-free) |
+| `helpers/baseline.py` | Per-layer SCALE-Sim simulation; `run_baseline()` (plain) and `run_cosma_aware()` (COSMA-plan-driven, real engine numbers; optional `schedule` param re-simulates a reordered plan under `free_schedule=True`, item 32) |
+| `helpers/cosma_Ilp.py` | The ILP itself (Eq.1–12); `build_cosma_model(..., free_schedule=False\|True)` — fixed-schedule (default) or real free-scheduling mode (item 32); also `compute_structural_minimum_bytes`/`compute_mpmf_bytes` (M_R/MPMF, solve-free), and `compute_true_mpmf_bytes` (real M_P, the separate, lighter free-schedule §III-E1/Eq.13-15 ILP from item 31) |
 | `helpers/spm_allocator.py` | `SpmAllocator`/`SpmAllocationError` — live, byte-addressed replay of a solved plan during `run_cosma_aware()`, independently verifying it's physically realizable at the declared budget (no `scalesim` import; also usable standalone against the toy fixtures) |
 | `helpers/model_resolver.py` | `resolve_model_json()` — `.tflite` → `model.json`, auto-exported + cached under `_exported/`; shared by all three entry points (`run_cosma.py`, `run_experiments.py`, `visualize_spm.py`) |
 | `../scalesim/memory/cosma_resident_buffers.py` | `CosmaResidentReadBuffer`/`CosmaResidentWriteBuffer` — genuine zero-cost residency/creation in SCALE-Sim's own engine |
@@ -442,6 +448,7 @@ before investing further, rather than assuming either way.
 | `docs/cosma_integration_plan.md` | Original design doc (Phase-1 plan, predates this file) |
 | `docs/STATUS.md` | Quick-scan bulleted summary: what's built vs. what's still missing to match the paper more fully |
 | `docs/PIPELINE.md` | The mechanics: step-by-step flow of `run_cosma.py` (real, SCALE-Sim-verified) and `visualize_spm.py` (fast, ILP-only), with diagrams |
+| `docs/results_plan.md` | Standing reference mapping our evaluation onto the paper's own (§V-A budgets `M_R`/`M_P`/`M_H`, metrics, models, baselines) — what's directly comparable today, what's a proxy, what's missing |
 
 ---
 
@@ -1452,3 +1459,385 @@ a `DRAM_access.csv` file that doesn't exist in this SCALE-Sim version.
     accept `Not Solved` as a possible outcome instead. Verified MobileNetV2
     @64KB still solves instantly and reproduces the exact same validated numbers
     with no time limit passed at all.
+
+30. **Researched the paper's own evaluation methodology directly (arXiv:2311.18246
+    §V-A) and wrote `docs/results_plan.md`** -- a standing reference mapping our
+    evaluation onto the paper's, after being asked what `M_P`/`M_H` (the paper's
+    other two budgets besides `M_R`) actually are. Key findings, verified against
+    both the paper's own text and a full codebase audit:
+    - **`M_R`**: our `compute_structural_minimum_bytes()` genuinely matches the
+      paper's definition (max over operators of activation-input+output bytes).
+    - **`M_P`** ("Minimum Peak Memory Footprint... required for executing the
+      entire DNN", via the paper's own §III-E1/Eq.13-15 optimization): what this
+      codebase calls `compute_mpmf_bytes()` is **not** this -- it's the peak
+      footprint under our one fixed schedule (an upper bound), already flagged in
+      `STATUS.md:49` but now precisely tied to the paper's own term. On all 5 real
+      models tested before DenseNet-121 this proxy happened to exactly equal
+      `M_R`, which is why the gap never mattered empirically until DenseNet-121
+      (item 29) became the first real model where `M_R != MPMF`.
+    - **`M_H`** ("Hybrid") = `(M_R + M_P) / 2` -- zero existing implementation
+      anywhere in `cosma/` (confirmed via full grep), not computable until real
+      `M_P` exists.
+    - **Paper's primary metric** is "non-compulsory off-chip data access volume"
+      (spill+retrieve bytes) -- not previously isolated as one field. **Added**
+      `total_non_compulsory_access_bytes = total_idealized_spill_bytes +
+      total_idealized_retrieve_bytes + total_real_retrieve_bytes` to
+      `run_cosma.py`'s summary dict/verbose output and `run_experiments.py`'s
+      `RESULT_FIELDS`/CSV output. Verified: MobileNetV2 @64KB gives `0` (matches
+      the already-established fact that this model never spills at any feasible
+      budget); the small custom DenseNet fixture (item 30's own model, see below)
+      @550KB gives `212992 + 212992 + 0 = 425984`, matching that run's own
+      already-observed idealized spill/retrieve numbers exactly.
+    - **Paper's model list** (§V-A1): 10 human-designed (ResNet-50, DenseNet,
+      ResNeXt, R2Plus1D, S3D, FCN, L-RASPP, DeepLabV3, Transformer, ViT) + 4
+      NAS-generated (PNASNet-5, AmoebaNet-D, NASNet-A, DARTS, needing heuristics
+      for their "complex graph structure and irregular wiring"). ResNet-50 and
+      DenseNet are both already in our own roster -- direct overlap, not an
+      approximation.
+    - **Built a small, fast custom DenseNet fixture** (`2 dense blocks x 4 units,
+      growth rate 12, 32x32 input, 18 Conv2D layers total, random/untrained
+      weights via `tf.keras`) to get a real, non-toy `M_R != MPMF` demonstration
+      that actually solves in reasonable time, after the full ImageNet-scale
+      DenseNet-121 (found this session as the first real model with a genuine
+      gap: `M_R=6328.25KB`, `MPMF=8232.00KB`) ran for 1.5+ hours on a shared
+      remote machine (`wil`) with no result -- confirmed alive via `ps`/`top`
+      (CBC pinned near 100% CPU, ~12GB RSS, 47+ minutes of accumulated CPU time)
+      but impractical to wait out, especially on a box other users were actively
+      running workloads on. COSMA never looks at weight *values* (only shapes/
+      structure), so random-weight construction is exactly as valid as a trained
+      checkpoint for this purpose. Real bounds: `M_R=512.00KB`, `MPMF=608.00KB`.
+      Full run @550KB (real SCALE-Sim, both passes): 84.2% DRAM reduction but
+      **0.9985x speedup (net slower)** -- the retrieve landed exactly on a
+      `CONCAT` timestep that was free (0 cost) in baseline, becoming a *new*
+      memory bottleneck in the COSMA-aware run that didn't exist before. First
+      real (non-toy) demonstration of a genuine spill/retrieve tradeoff actually
+      costing something, not just saving.
+    - **Comparison baselines** (TFLite linear allocator x {default, MPMF
+      schedule} x {Belady, greedy replacement}) -- confirmed via grep, zero
+      implementation anywhere. Per explicit user decision, kept as **open future
+      work** in `results_plan.md`, not permanently closed (unlike operator
+      scheduling/divide-and-conquer, which remain permanently out of scope per
+      earlier standing direction).
+    - Solver/hardware facts from the paper, for reference: Gurobi, Apple M1 Pro,
+      16GB RAM, 24-hour time limit per ILP call; human-designed DNNs average
+      0.296s to solve (vs. our PuLP/CBC's already-documented 178s on
+      Inception-V3); NAS models via heuristics ~2 minutes.
+
+31. **Implemented the paper's real `M_P` (and derived `M_H`) via §III-E1/
+    Eq.13-15 -- a genuinely separate, free-schedule ILP, isolated from the
+    main spill/retrieve pipeline** -- reversing, in this one narrow place
+    only, the "operator scheduling permanently out of scope" decision from
+    earlier this session, after the user explicitly confirmed they wanted
+    this specific tradeoff once it was surfaced clearly.
+    - **Why this couldn't be avoided**: fetched Eq.13-15 directly from the
+      paper -- `C[a,t]` is explicitly free in this mode (*"the objective
+      function is set to minimize M_peak given only the node ordering
+      constraints"*), not fixed. Worked through why by hand: with spilling
+      disabled (Eq.13), a tensor must stay resident its whole liveness
+      window once created, so under a FIXED schedule the peak is already
+      fully determined by the graph alone -- exactly what
+      `compute_mpmf_bytes()` already computes for free. The *only* lever
+      Eq.15 has left to find a lower `M_peak` is choosing a different
+      operator order. Real `M_P` and operator scheduling are the same
+      mechanism -- there is no partial/cheaper version of this.
+    - **A second fetch found the good news**: the paper's own text says
+      this mode considers *"only the node ordering constraints"* --
+      "memory allocation is not considered." So the new model needs none of
+      `build_cosma_model()`'s `L` (address)/Eq.9 (budget-fit)/Eq.10
+      (non-overlap)/Eq.11 (address-pinning) machinery, and since Eq.13
+      forces `S=R=0` identically, those two variables don't need to exist
+      either -- substituted out of the general Eq.1/2/5 rather than created
+      and constrained. Result: a small ILP over just `C`/`P` (each
+      `|A|x|T|` binary) plus one scalar `M_peak`, not the main pipeline's
+      full quadratic-pairs apparatus.
+    - **A real audit before writing any code**: a research agent mapped
+      every `C(a,t)`-call-site in `cosma_Ilp.py` (confirmed: a plain Python
+      closure returning a constant, never an `LpVariable`, at exactly 8
+      call sites) and confirmed via full-repo grep that no file outside
+      `cosma_Ilp.py` calls `build_cosma_model`/`solve`/`extract_results`
+      except `run_cosma.py` and `visualize_spm.py` -- so a new, separate
+      function could be added with zero ripple effect on the existing,
+      heavily-validated main pipeline.
+    - **A third fetch found a real gap in the paper's own published
+      formulation, confirmed directly against its text rather than
+      assumed**: nothing in Eq.1/2/5/6/7 as published stops two *different*
+      (non-sibling) tensors from being assigned the same `t`, even though
+      the paper defines `T` as "each timestep represents the execution of
+      one operator." Fixed defensively (not in the paper's own numbered
+      list): "at most one node's creation per timestep," using one
+      representative tensor per node (Eq.6 already ties any siblings
+      together, so only one representative is needed to avoid
+      double-counting a multi-output node against itself). This is the
+      third time this project has found and fixed a real gap in the
+      paper's own formulation rather than silently reproducing it (after
+      the Eq.2/3 base-case fix on ResNet-50, and `spm_allocator.py`'s
+      implicit-residency-lapse handling).
+    - **New functions, all in `helpers/cosma_Ilp.py`, purely additive**:
+      `build_mpmf_schedule_model()` (the ILP above), `extract_mpmf_
+      schedule_results()` (returns `{'mpmf_bytes', 'schedule'}` -- the
+      schedule being COSMA's own chosen operator order, not consumed by
+      `run_cosma.py`/`baseline.py`, which still simulate against the fixed
+      input order regardless), and `compute_true_mpmf_bytes()` (build+
+      solve+extract in one call, matching `compute_structural_minimum_
+      bytes()`/`compute_mpmf_bytes()`'s simple shape, raising `RuntimeError`
+      on non-`Optimal`). `build_cosma_model()`, `extract_results()`,
+      `solve()`, and both existing bound functions are completely
+      unchanged.
+    - **Exposed via a new opt-in `visualize_spm.py --true-mpmf` flag**
+      (alongside `--bounds-only`) -- opt-in specifically because it breaks
+      `--bounds-only`'s existing "instant, no ILP" guarantee; the default
+      path is unaffected (re-verified: 0.493s on `model.json`, unchanged).
+    - **A genuine near-miss during verification, worth recording**: the
+      first DAG-validity check (comparing each node's own id against
+      `schedule`, which is keyed by *tensor* ids) found 29 apparent
+      violations on MobileNetV2 -- looked like a real ILP bug. It wasn't:
+      the check itself conflated node ids with tensor ids (`for a, node in
+      nodes.items(): ... schedule[a]`, treating a node id as if it were a
+      tensor id). The toy fixtures had passed with 0 violations *only*
+      because their tensor/node id ranges never overlap, so the buggy
+      lookup silently found nothing to check at all -- a vacuous pass, not
+      a real one. Fixed the check (compare each node's *output* tensor's
+      schedule position against its *input* tensors', not the node's own
+      id) and re-ran: 0 violations, genuinely, on every model tested.
+    - **Verified on 6 models** -- `M_R <= true_M_P <= MPMF-proxy` held on
+      all of them, and for the 5 where `MPMF-proxy` already equalled `M_R`
+      (MobileNetV2, ResNet-20, SqueezeNet, plus both toy fixtures already
+      matching by construction), `true_M_P` was *mathematically forced* to
+      equal `M_R` too by the squeeze -- confirmed by an actual solve on
+      each, not just trusted from the inequality. A real, informative split
+      showed up on the only two models with a genuine `M_R != MPMF-proxy`
+      gap that got solved: both toy fixtures improved all the way down to
+      `true_M_P == M_R` (free scheduling found a real, better order), while
+      this session's own small custom DenseNet fixture did **not** improve
+      at all (`true_M_P == MPMF-proxy == 608KB` -- the existing arbitrary
+      op order was already schedule-optimal for peak footprint here, even
+      though it isn't for spill/retrieve minimization -- a genuinely
+      different objective, and a legitimate, informative negative result,
+      not a bug). `M_H` for that model: 560.00KB.
+      Full numbers: `docs/results_plan.md` §4.
+    - **Not yet run**: Inception-V3, ResNet-50, DenseNet-121 -- `C[a,t]`
+      moving to a full `|T|x|A|` binary block is exactly the paper's own
+      `O(|T|x|A|^2)` worst case (§III-F); expect the same kind of solve-time
+      jump the main pipeline already hit on DenseNet-121 (item 29).
+    - Updated `docs/results_plan.md`'s mapping table and model-roster table
+      with all of the above; `M_P`/`M_H`/operator-scheduling rows all
+      updated to reflect the new, narrower reality (implemented for `M_P`
+      specifically, main pipeline still fixed-schedule).
+
+32. **Implemented real operator scheduling in the *main* pipeline** --
+    `build_cosma_model(..., free_schedule=True)`, closing the single
+    biggest scope gap on record (item 31's own note, `STATUS.md`'s "What's
+    missing" list): the isolated `M_P`-only scheduling model from item 31
+    never touched the actual spill/retrieve simulation or got fed back
+    into SCALE-Sim. This does.
+    - **What changed in `cosma_Ilp.py`**: `C[a,t]` becomes a real
+      `LpVariable` dict (instead of the fixed-schedule closure) when
+      `free_schedule=True`, reusing the same pattern item 31's
+      `build_mpmf_schedule_model()` already proved out, but now combined
+      with the *full* Eq.9/10/11 placement/replacement machinery rather
+      than that model's deliberately memory-allocation-free subset. Eq.6/7
+      become real constraints; Eq.5 is evaluated at every `t`; "at most
+      one node's creation per timestep" (the same defensive fix from item
+      31) plus Eq.7 plus `|T| == |nodes|` forces an exact bijection by
+      pigeonhole -- no separate "exactly one" constraint needed.
+      `free_schedule` defaults to `False`, reproducing every previously
+      published number byte-for-byte (re-confirmed, see Verification
+      below) -- this is purely additive, not a rewrite.
+    - **DAG precedence is not a separate constraint** -- hand-derived (and
+      now empirically re-confirmed on real solves, not just argued) that
+      it's implied transitively through Eq.1/2/5: a node's activation
+      inputs must be `P`/`R`-resident at its own creation instant, which
+      requires their own producer's `C` to have fired at a strictly
+      earlier `t` (Eq.1 forbids `C` and `P`/`R` coinciding on the same
+      tensor at the same `t`). Same argument item 31 already used for the
+      isolated `M_P` model; re-verified here with a direct check (every
+      node's activation-input producers run at a strictly earlier `t` in
+      the solved schedule) on both toy fixtures -- zero violations.
+    - **The fixed-schedule pair-filter for Eq.10 doesn't survive free
+      scheduling** -- `_liveness_windows()` reads `producer_layer`/
+      `consumer_layers` as literal timesteps, which only holds when the
+      schedule is fixed. Replaced (only when `free_schedule=True`) with
+      `_asap_alap_tensor_windows()` / `_asap_alap_node_windows()`: a
+      standard critical-path (ASAP/ALAP) forward+backward pass over the
+      node DAG, giving a provably correct outer bound on which timestep
+      each node/tensor could ever occupy under *any* valid topological
+      order -- safe to prune on (never drops a pair that could truly
+      overlap) because it's a superset of the real window, not an
+      estimate.
+    - **A real bug caught before it could silently corrupt results**:
+      `baseline.py`'s `_simulate_layer()` looked up
+      `resident_action.get((ifmap_id, layer['id']))` -- keyed by the
+      layer's own id. That's only correct because, under every
+      previously-existing code path, the abstract schedule timestep `t`
+      and the layer id happen to coincide. Once `C[a,t]` is free, they no
+      longer do, and this lookup would have silently found nothing (or
+      the wrong tensor's entry) for a reordered layer, without raising
+      -- the ifmap-residency credit would just have quietly been wrong for
+      whichever layers actually moved. Fixed by threading the real
+      abstract timestep `t` into `_simulate_layer()` explicitly (new
+      required param) instead of inferring it from `layer['id']`; caught
+      by tracing the exact key shape `cosma_Ilp.extract_results()`
+      produces against every place that reads `resident_action`, not by
+      observing a wrong number first.
+    - **`baseline.py`/`run_cosma.py` now consume the ILP's chosen order
+      for real**: `_run_layers()`/`run_cosma_aware()` take an explicit
+      `schedule: List[Tuple[t, layer_id]]`, defaulting to `None` ==
+      today's model.json order (so `run_baseline()`, which never passes
+      it, is completely unaffected -- correct, since the paper's own
+      baseline isn't schedule-optimized either). `SpmAllocator.step()` is
+      now called with the real abstract `t`, not `layer_id` -- the
+      previous code coupled those two silently. `cosma_Ilp.extract_results()`
+      gained `schedule_layer_at_t` (abstract timestep -> real layer id,
+      identity under a fixed schedule) specifically so downstream code has
+      an explicit, unambiguous mapping instead of an implicit
+      `t == layer_id` assumption. `run_cosma.py`'s per-timestep
+      accumulation loop, `visualize_spm.py`'s occupancy-plot x-axis labels,
+      and `run_experiments.py`'s sweep all updated accordingly.
+      `--free-schedule` exposed on all three CLIs.
+    - **Verification (per this project's standing "verify empirically,
+      don't just trust the encoding" practice)**:
+      - `toy_spill_model.json` (200B budget): free scheduling found a
+        strictly better order (`[1, 2, 0, 3]` instead of `[0, 1, 2, 3]`),
+        dropping the objective from 20 bytes (fixed) to **0 bytes** --
+        spill/retrieve eliminated entirely. DAG-valid (0 violations,
+        checked directly against the solved schedule, not assumed).
+        Standalone `SpmAllocator.replay_all()`: 0 violations.
+      - **Regression check**: ResNet-20-CIFAR10 @ 256KB, `free_schedule=False`
+        -- initially appeared to *not* match the previously published
+        91.1%/1.0299x (got 78.3%/1.0000x instead). Root-caused, not
+        shrugged off: `configs/scale.cfg` carries an uncommitted 16x16 ->
+        64x64 array-size edit (`STATUS.md`'s own already-documented
+        caveat) -- re-ran against a copy of the config at the commit that
+        was actually in effect when 91.1%/1.0299x was recorded (`git show
+        HEAD:configs/scale.cfg`), reproduced it **exactly**. Confirms the
+        refactor changed nothing in the `free_schedule=False` path; the
+        original mismatch was the pre-existing, already-known array-size
+        confound, not a regression.
+      - **Small custom DenseNet fixture** (`_exported/fake/model.json`,
+        real SCALE-Sim, 550KB budget, current 64x64 config): non-compulsory
+        bytes identical between fixed and free scheduling (425984 both --
+        free scheduling found no way to reduce total spill+retrieve
+        bytes here). But real simulated cycles differ: fixed schedule
+        61458 cycles (the retrieve lands exactly on layer 16's `CONCAT`,
+        free in baseline, turning it into a new memory bottleneck --
+        reproducing item 30's own finding under the current array config);
+        free schedule 58130 cycles -- free scheduling reordered around
+        that bottleneck without changing the total byte count. Genuinely
+        new evidence: scheduling freedom can matter for real simulated
+        performance even on a model where it doesn't reduce the paper's
+        own primary metric at all. `SpmAllocator`: 0 violations, both
+        runs (39/39 timesteps verified).
+      - **ResNet-20-CIFAR10**, `free_schedule=True` (240s CBC limit):
+        solved to `Optimal` well within the limit, reproducing the
+        `free_schedule=False` run's numbers exactly (0 non-compulsory
+        bytes, 78.3% reduction, 1.0000x, both) -- scheduling freedom found
+        nothing to improve on this mostly-linear-chain architecture,
+        consistent with item 31's same finding for the `M_P`-only model
+        and with this project's standing expectation (`ITERATION_HISTORY.md`
+        §5's original "Expected payoff" note).
+      - **`toy_branching_model.json`** (built specifically to stress skip
+        connections/branching): under `free_schedule=True`, the ASAP/ALAP
+        pair-filter prunes **0%** of pairs for this graph (231/231 survive
+        the overlap check, vs. 62/741 for the DenseNet fixture, 118/496 for
+        ResNet-20) -- computed directly, not guessed. Solve ran unbounded
+        for ~9 minutes of continuous 100% CBC CPU time without reaching
+        `Optimal` and was killed, not pursued further -- a real,
+        deliberately-adversarial worst case, consistent with the paper's
+        own documented `O(|T|x|A|^2)` complexity ceiling and this
+        project's existing precedent for treating an unresolved large
+        solve as an honest, informative data point rather than something
+        to force (item 29's DenseNet-121: killed after 47+ min, same
+        treatment). This is a synthetic correctness fixture, not a result
+        that matters on its own -- the point was confirming the pair-count
+        analysis matched real solver behavior, which it did.
+    - **Not yet run**: Inception-V3, ResNet-50, DenseNet-121 under
+      `free_schedule=True` -- expect at least the same solve-time jump the
+      fixed-schedule pipeline already hit on DenseNet-121 (item 29), now
+      compounded by the full `|T|x|A|` `C` block on top of the existing
+      placement machinery.
+    - Files touched: `helpers/cosma_Ilp.py` (`build_cosma_model()`,
+      `extract_results()`, new `_asap_alap_node_windows()`/
+      `_asap_alap_tensor_windows()`), `helpers/baseline.py`
+      (`_run_layers()`/`_simulate_layer()`/`run_cosma_aware()`),
+      `run_cosma.py`, `visualize_spm.py`, `run_experiments.py`. All
+      compile clean; `run_baseline()` and every `free_schedule=False` path
+      untouched in behavior (verified, not just asserted -- see
+      Regression check above). `docs/STATUS.md`/`docs/results_plan.md`
+      updated alongside this entry.
+
+33. **Added `spm_allocator.compact_spm_plan()`** -- a visualization-only
+    repacking of a solved plan's SPM addresses toward 0, prompted by a
+    direct question about the occupancy plots: "why do the boxes get
+    allocated at the top with empty space in the center?"
+    - **Root-caused before writing any code, not guessed**: pulled a real
+      solved plan (ResNet-20-CIFAR10 @ 256KB) and inspected `spm_plan`
+      directly -- at `t=0`, with nothing else resident and the *entire*
+      262144-byte budget free, the ILP placed the one resident tensor at
+      address 65536. This is exactly what item 25's own "nothing rewards
+      compact placement" finding (Eq.9-11 only constrain `L` to fit/not-
+      overlap; Eq.12's objective never references it) predicts: CBC has
+      zero incentive to prefer a low address over a high one, so it
+      returns whatever feasible assignment it happens to find.
+    - **First design tried, and why it was replaced**: a naive per-
+      timestep online greedy (free anything no longer resident, then
+      first-fit-decreasing the newly-resident tensors into the lowest
+      gap) passed on `toy_spill_model.json` and both ResNet-20 budgets
+      tested, then failed outright on the small custom DenseNet fixture's
+      real spill/retrieve plan (`_exported/fake/model.json` @ 550KB) --
+      two 160KB tensors landed with a 64KB gap between them, too
+      fragmented for a later 192KB tensor to fit even though 235KB of
+      free space existed in total. This is a real instance of dynamic
+      storage allocation being NP-hard in general (the same reason the
+      real placement needs an ILP at all, not a greedy) -- an online,
+      no-lookahead heuristic can't see far enough ahead to avoid it.
+    - **Fixed by making it genuinely offline**: `resident_action` is
+      known for the *whole* horizon in advance -- this was never actually
+      a streaming problem, just implemented as one. Rewrote as: group
+      each tensor's C/P/R timesteps into maximal contiguous "episodes"
+      (`_residency_episodes()` -- Eq.11's own address-pinning already
+      means a tensor only needs ONE stable address per continuously-
+      resident span, and Eq.8 caps it at two episodes total per tensor,
+      spilled at most once), sort ALL episodes across ALL tensors largest-
+      first (ties by start time then tensor id, for a deterministic
+      result), and place each into the lowest address free for its
+      *entire* span against every already-placed episode it overlaps in
+      time. Giving large/long-lived tensors first pick of contiguous
+      space is what avoids the fragmentation the online version hit.
+      Re-tested on the exact same DenseNet fixture case that broke the
+      first version: succeeded (peak occupancy unchanged at 524288 bytes,
+      same as the raw plan -- only the layout differs).
+    - **Self-verifying, not just trusted**: `compact_spm_plan()` replays
+      its own output back through a real `SpmAllocator` (same pattern
+      this module already established for the solved ILP plan itself)
+      before returning -- raises `SpmAllocationError`, not a silently
+      wrong plot, if that replay ever disagrees. `_lowest_fit_address()`
+      also raises directly if no gap fits, rather than ever returning an
+      invalid address.
+    - **Caller-side fallback, verified with a synthetic failure test**
+      (not just reasoned about): `visualize_spm.render_comparison()`
+      gained a `compact: bool = True` param -- on `SpmAllocationError` it
+      prints a warning and falls back to the solver's own raw addresses
+      rather than crashing plot generation. Confirmed via `unittest.mock`
+      forcing `compact_spm_plan()` to always raise: the fallback path
+      executed correctly and still produced a valid PNG.
+    - **Verified visually, not just numerically**: rendered ResNet-20 @
+      256KB and the DenseNet fixture @ 550KB (the one with a real
+      spill/retrieve to show, including the spill/retrieve markers) both
+      compacted and raw, and read the actual PNGs back. Compacted:
+      tensors stack contiguously from address 0 with no pointless gaps.
+      Raw: scattered addresses reaching up to and past the nominal
+      y-axis range in places, exactly matching the original complaint.
+    - Exposed via `--raw-addresses` (default: compaction on) on
+      `run_cosma.py`, `run_experiments.py` (`compact_plots` ->
+      `run_cosma()`'s `compact_plot`), and `visualize_spm.py`'s own CLI.
+      `render_comparison()`'s COSMA-panel subtitle now discloses which
+      mode produced the plot ("repacked toward 0 for readability" vs.
+      "solver's own raw addresses"), so a reader never mistakes one for
+      the other. `print_tensor_table()` intentionally left unchanged
+      (still prints the solver's own raw addresses -- a lower-level
+      diagnostic of the actual ILP output, not the plot).
+    - Files touched: `helpers/spm_allocator.py` (new
+      `compact_spm_plan()`/`_residency_episodes()`/`_lowest_fit_address()`),
+      `visualize_spm.py` (`render_comparison()`/`_render_cosma_panel()`,
+      new import), `run_cosma.py`, `run_experiments.py`. All compile
+      clean. `docs/STATUS.md` updated alongside this entry.
