@@ -152,7 +152,7 @@ def _run_and_log(logs_dir: str, log_name: str, model_input: str, budget_kb: floa
 
 def run_model_sweep(model_input: str, budgets_kb: list, config_path: str,
                      exporter: str, export_dir: str, force_export: bool,
-                     time_limit_sec: float, logs_dir: str = None,
+                     time_limit_sec: float = None, logs_dir: str = None,
                      save_plots: bool = True) -> list:
     """
     Runs every budget in budgets_kb for one model, running SCALE-Sim's
@@ -248,8 +248,8 @@ def main():
                          help='Cache directory for .tflite -> model.json exports.')
     parser.add_argument('--force-export', action='store_true',
                          help='Re-export even if a cached model.json exists.')
-    parser.add_argument('--time-limit', type=float, default=120,
-                         help='CBC solve time limit per (model, budget) run, seconds.')
+    parser.add_argument('--time-limit', type=float, default=None,
+                         help='CBC solve time limit per (model, budget) run, seconds. ')
     parser.add_argument('--out-csv', default=None,
                          help='Path to write the results table as CSV. Defaults to '
                               'a timestamped file under cosma/results/ -- results '

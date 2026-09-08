@@ -174,7 +174,7 @@ Speedup: 1.0016x
 | `--model-json` | `cosma/model.json` | path to the exported graph |
 | `--config` | `configs/scale.cfg` | SCALE-Sim hardware config |
 | `--budget-kb` | `128` | SPM capacity in KB |
-| `--time-limit` | `120` | CBC solve time limit, seconds |
+| `--time-limit` | unbounded (`None`) | CBC solve time limit, seconds -- runs until CBC proves `Optimal`/`Infeasible`, however long that takes; pass a number to cap it and risk `Not Solved` instead |
 
 ### Running individual stages standalone
 
@@ -1425,3 +1425,30 @@ a `DRAM_access.csv` file that doesn't exist in this SCALE-Sim version.
       without opting into engine-level noise to get it. Verified: output is now
       23 lines (was 75 with the noisy version), zero `tqdm` bars, same numbers
       as before, `[COSMA SPM]` line present.
+
+29. **Removed the default ILP solve time limits** after DenseNet-121 -- found
+    this session as the first real (non-synthetic) model with `M_R != MPMF`
+    (6328.25 vs. 8232.00 KB, per `visualize_spm.py --bounds-only`), unlike every
+    other real model tested so far -- hit `RuntimeError: COSMA ILP did not solve
+    to optimality: status=Not Solved` at 6900KB, a budget already independently
+    confirmed feasible and inside that real spill/retrieve range. `Not Solved` is
+    a distinct PuLP/CBC status from `Infeasible` -- it means CBC was cut off by
+    its time limit before proving anything either way, not that no plan exists.
+    distinct PuLP/CBC status from `Infeasible` -- it means CBC was cut off by its
+    time limit before proving anything either way, not that no plan exists.
+    `run_experiments.py`'s own `--time-limit` default was only 120s (lower than
+    `run_cosma.py`'s own 360s CLI default -- an inconsistency that existed before
+    this fix too), and a 121-layer, densely-connected model near its spill/
+    retrieve boundary (the hardest region for a MIP solver to prove optimality
+    on -- many close-to-tied candidate placements, unlike a budget with slack or
+    one deep in `Infeasible` territory) can genuinely need much longer than any
+    fixed default would guess. `cosma_Ilp.solve()` already defaulted
+    `time_limit_sec=None` (unbounded) at the lowest level; both callers imposing
+    a concrete override (`run_cosma.py`'s function default `120` and CLI default
+    `360`; `run_experiments.py`'s CLI default `120`) were changed to `None`, so
+    the unbounded behavior now actually reaches CBC by default -- run until
+    `Optimal`/`Infeasible` is proven, however long that takes. The `--time-limit`
+    flag still exists on both entry points for anyone who wants to cap it and
+    accept `Not Solved` as a possible outcome instead. Verified MobileNetV2
+    @64KB still solves instantly and reproduces the exact same validated numbers
+    with no time limit passed at all.
