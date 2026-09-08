@@ -65,12 +65,23 @@ def compute_structural_minimum_bytes(nodes, tensors) -> Tuple[int, int]:
 
     Returns (bytes, argmax_timestep) so a caller can report *which*
     operator is the bottleneck, not just the number.
+
+    Deduplicates activation_inputs/outputs before summing -- an operator
+    that reads the same tensor as more than one of its own operands (e.g.
+    a self-multiply, Multiply()([x, x]), which TFLite/graph_builder.py
+    represents as activation_inputs=[x, x]) only needs that tensor
+    resident once in real hardware, not once per occurrence in the list.
+    Found via a real model that tripped it: a naive sum() double-counted
+    the shared operand, inflating M_R past MPMF -- impossible in
+    principle (a node's own inputs+outputs are always a subset of
+    whatever _liveness_windows() already counts as resident at that same
+    timestep, so M_R can never legitimately exceed MPMF).
     """
     floor_bytes, floor_t = 0, None
     for t in sorted(nodes.keys()):
         node = nodes[t]
-        live = sum(tensors[a].size_bytes for a in node.activation_inputs if a in tensors)
-        live += sum(tensors[a].size_bytes for a in node.outputs if a in tensors)
+        live = sum(tensors[a].size_bytes for a in set(node.activation_inputs) if a in tensors)
+        live += sum(tensors[a].size_bytes for a in set(node.outputs) if a in tensors)
         if live > floor_bytes:
             floor_bytes, floor_t = live, t
     return floor_bytes, floor_t
