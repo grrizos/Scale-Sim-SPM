@@ -8,12 +8,13 @@ here, see `ITERATION_HISTORY.md`.
 **Pipeline** (`cosma/` layout: entry points at the top level, library modules in `helpers/`, docs in `docs/` — see `PIPELINE.md`)
 - `run_cosma.py` — entry point: orchestrates graph → baseline sim → ILP solve → COSMA-aware sim → combined report (DRAM bytes, cycles, speedup), saves the occupancy plot by default
 - `run_experiments.py` — entry point: batch sweep across models × budgets, auto-saved CSV, baseline cached once per model
-- `visualize_spm.py` — entry point: fast, **SCALE-Sim-free** diagnostic: `--bounds-only` (instant M_R/MPMF), and a 2-panel PNG comparing baseline vs. COSMA SPM occupancy over time on the same byte-address scale
+- `visualize_spm.py` — entry point: fast, **SCALE-Sim-free** diagnostic: `--bounds-only` (instant M_R/MPMF), and a 2-panel PNG comparing baseline vs. COSMA SPM occupancy over time on the same byte-address scale. Accepts a raw `.tflite` directly (auto-exported/cached via `model_resolver`, same as the other two entry points)
 - `helpers/graph_builder.py` — parses `model.json` into `nodes`/`tensors` (COSMA-tracked activation tensors only; weights/bias/network-input excluded)
 - `helpers/topology_builder.py` — `model.json` → SCALE-Sim topology CSV
 - `helpers/baseline.py` — real SCALE-Sim driver: `run_baseline()` (plain, no COSMA) and `run_cosma_aware()` (COSMA-plan-driven, real engine numbers)
 - `helpers/cosma_Ilp.py` — the ILP itself: Eq.1–12, fixed-schedule mode (paper's §III-E2); Eq.6/7 hold by construction since the schedule is fixed
 - `helpers/model_resolver.py` — `.tflite` → `model.json` auto-export + cache, shared by `run_cosma.py` and `run_experiments.py`
+- `helpers/spm_allocator.py` — `SpmAllocator`, a live byte-addressed replay of a solved plan run alongside every `run_cosma_aware()` call, independently verifying it's physically realizable at the declared budget (no `scalesim` dependency)
 - `toy_spill_model.json` / `toy_branching_model.json` — synthetic fixtures; the only graphs in the repo where a real spill/retrieve ever fires
 
 **Engine modifications** (explicitly authorized: "mess with SCALE-Sim's codebase as long as it's still accurate simulation")
@@ -24,6 +25,7 @@ here, see `ITERATION_HISTORY.md`.
 - Implemented Eq.1–12 (memory allocation + tensor replacement) faithfully
 - Found + fixed a real gap: `P`/`S` were completely unconstrained at the very first timestep (Eq.2/3's `if t > 0` guard had no base case), letting the solver plant a zero-cost phantom "preserved" tensor before it was even created. Caught via ResNet-50 (5/79 tensors affected), confirmed harmless to all previously-published numbers, fixed with an explicit base-case constraint
 - Added `compute_structural_minimum_bytes()` (M_R) / `compute_mpmf_bytes()` (MPMF) — solve-free, instant feasibility bounds
+- Added a live `SpmAllocator` replay of every solved plan during `run_cosma_aware()` — independent, physically-checked verification (address collisions, budget overflow, free/preserve without residency) that the ILP's plan is actually realizable, not just trusted. Found and fixed a real bug in the allocator itself along the way (an implicit residency lapse — a tensor with no further consumers simply stops being marked resident, with no explicit Spill, since Eq.12 charges nothing for that — was wrongly treated as "still resident," producing a false collision). Re-verified all 3 previously-published real-model results byte-identical with zero violations after the fix
 
 **Validation methodology**
 - Purpose-built toy graphs (incl. the persisted `toy_spill_model.json`) specifically to exercise spill/retrieve, since real models never do
@@ -52,3 +54,4 @@ here, see `ITERATION_HISTORY.md`.
 
 - **Budget-matching**: baseline's real SRAM is fixed by `scale.cfg` (currently 64+64+64=192KB total) regardless of whatever `--budget-kb` is passed to COSMA — some of our comparisons handed COSMA more total memory than baseline ever had. Checked once (ResNet-20, 192KB vs. 512KB gave identical results) but not verified across the board.
 - **Hardware-config governance**: `configs/scale.cfg`'s array size changed 16×16 → 64×64 mid-project (now committed) without the validated-results table being re-measured, silently invalidating direct comparison to `ITERATION_HISTORY.md`'s §2 table. No process yet to pin/version which config a given reported number used.
+- **`--config`/`--models` are read as plain paths, not resolved against the repo root** — passing an absolute path from a different machine (e.g. copy-pasting a `--config /home/you/...` command from a laptop onto a remote SSH box where the repo lives elsewhere) doesn't fail loudly: Python's `configparser.read()` silently no-ops on a missing file instead of raising, so a wrong `--config` path surfaces many calls later as a confusing `NoSectionError: No section: 'general'` in `scale_config.py`, not as a file-not-found at the point of the mistake. Always use paths relative to `cosma/` (e.g. `../configs/scale.cfg`) when a command needs to run unmodified on more than one machine.

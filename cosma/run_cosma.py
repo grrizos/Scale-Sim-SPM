@@ -152,7 +152,14 @@ def run_cosma(model_json_path: str = DEFAULT_MODEL_JSON,
 
     # Real, engine-driven second simulation pass -- see module docstring.
     # Budget-dependent (via resident_action), so this always re-runs.
-    cosma_stats = baseline.run_cosma_aware(model_json_path, config_path, resident_action)
+    # spm_plan/tensors/memory_budget_bytes drive a live SpmAllocator replay
+    # alongside the simulation -- an independent, physically-checked proof
+    # that resident_action's claims are actually realizable at this budget,
+    # not just trusted (see helpers/spm_allocator.py).
+    cosma_stats = baseline.run_cosma_aware(
+        model_json_path, config_path, resident_action,
+        spm_plan=result['spm_plan'], tensors=tensors,
+        memory_budget_bytes=memory_budget_bytes)
 
     CONV_LIKE_OPS = ('CONV2D', 'DEPTHWISE_CONV2D')
 

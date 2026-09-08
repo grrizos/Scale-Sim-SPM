@@ -264,7 +264,10 @@ before rendering -- not its main purpose.
 Like every command above except it never touches SCALE-Sim (no
 `baseline.run_baseline()`, no `run_cosma_aware()`) -- it only loads the
 graph and, if needed, solves the ILP, so it's fast even on ResNet-50/
-Inception-V3-sized graphs.
+Inception-V3-sized graphs. `--model-json` accepts a `.tflite` directly
+too (auto-exported/cached via `model_resolver`, same as `run_cosma.py`/
+`run_experiments.py` -- see item 27 below), with matching `--exporter`/
+`--export-dir`/`--force-export` flags.
 
 ```bash
 # Render the comparison diagram at one specific budget
@@ -312,6 +315,37 @@ provably `Infeasible`, no solve needed) and MPMF (the ceiling at/above
 which spill/retrieve is always 0, so the diagram would be all continuous
 blocks). If they're equal, don't bother rendering at different budgets
 expecting to see something new -- there's nothing to show at any budget.
+
+### Recipe: finding a real budget to sweep, instead of guessing
+
+The two tools above chain directly into each other -- this is the
+intended way to pick a `--budgets-kb` value for `run_experiments.py`
+without manual bisection (a real problem hit early on: three guessed
+budgets for ResNet-50 over SSH, none landing anywhere useful; see item 19
+below for the full story that motivated building `--bounds-only` at all).
+
+```bash
+# 1. Get the floor (M_R) and ceiling (MPMF) -- instant, no SCALE-Sim,
+#    works on a raw .tflite too (auto-exported/cached, same as the other
+#    two entry points as of item 27 below).
+PYTHONPATH=..:. python3 visualize_spm.py --model-json model.json --bounds-only
+#   Structural minimum (M_R):   ...   bytes ( X.XX KB) at t=...
+#   MPMF ceiling (0 spill at/above): ... bytes ( Y.YY KB) at t=...
+
+# 2. Feed those numbers straight into run_experiments.py's --budgets-kb.
+#    Anything below X.XX is guaranteed Infeasible -- don't waste a real
+#    SCALE-Sim run finding that out again.
+PYTHONPATH=..:. python3 run_experiments.py --models model.json \
+    --config ../configs/scale.cfg --budgets-kb X.XX Y.YY
+```
+
+If `M_R == MPMF` (the case for all 5 real models tested so far -- see
+item 19/§2), there is no budget at which spill/retrieve is ever nonzero;
+one budget at/above `M_R` is enough to get a real, SCALE-Sim-verified
+DRAM-reduction/speedup number, and any budget below it will fail fast
+with `AssertionError: tensor N (X bytes) does not fit in the Y-byte SPM
+budget` -- exactly the wall `--bounds-only` already predicted, just
+confirmed against the real engine this time.
 
 ### Testing `cosma_Ilp.py` in isolation on a toy graph
 
@@ -392,12 +426,13 @@ before investing further, rather than assuming either way.
 | `model.json` | Exported MobileNetV2-CIFAR10 graph (64 layers, 172 tensors) |
 | `run_cosma.py` | Entry point: orchestrates the full pipeline, reports cycles/DRAM/speedup, saves the SPM occupancy plot by default |
 | `run_experiments.py` | Entry point: batch runner, multiple models × budgets, table/CSV output |
-| `visualize_spm.py` | Entry point: fast (no SCALE-Sim), ILP-only debug tool: `--bounds-only` prints M_R/MPMF instantly; otherwise renders a 2-panel PNG (baseline vs. COSMA SPM occupancy over time) |
+| `visualize_spm.py` | Entry point: fast (no SCALE-Sim), ILP-only debug tool: `--bounds-only` prints M_R/MPMF instantly; otherwise renders a 2-panel PNG (baseline vs. COSMA SPM occupancy over time). Accepts `.tflite` directly (auto-exported via `model_resolver`, same as the other two entry points) |
 | `helpers/graph_builder.py` | `model.json` → `nodes`/`tensors` dicts |
 | `helpers/topology_builder.py` | `model.json` → SCALE-Sim topology CSV + layer-id↔row map |
 | `helpers/baseline.py` | Per-layer SCALE-Sim simulation; `run_baseline()` (plain) and `run_cosma_aware()` (COSMA-plan-driven, real engine numbers) |
 | `helpers/cosma_Ilp.py` | The ILP itself (Eq.1–12, fixed-schedule mode); also `compute_structural_minimum_bytes`/`compute_mpmf_bytes` (M_R/MPMF, solve-free) |
-| `helpers/model_resolver.py` | `resolve_model_json()` — `.tflite` → `model.json`, auto-exported + cached under `_exported/`; shared by `run_cosma.py` and `run_experiments.py` |
+| `helpers/spm_allocator.py` | `SpmAllocator`/`SpmAllocationError` — live, byte-addressed replay of a solved plan during `run_cosma_aware()`, independently verifying it's physically realizable at the declared budget (no `scalesim` import; also usable standalone against the toy fixtures) |
+| `helpers/model_resolver.py` | `resolve_model_json()` — `.tflite` → `model.json`, auto-exported + cached under `_exported/`; shared by all three entry points (`run_cosma.py`, `run_experiments.py`, `visualize_spm.py`) |
 | `../scalesim/memory/cosma_resident_buffers.py` | `CosmaResidentReadBuffer`/`CosmaResidentWriteBuffer` — genuine zero-cost residency/creation in SCALE-Sim's own engine |
 | `toy_spill_model.json` | Synthetic, verification-only fixture (4 tensors, 10-100 bytes) — a minimal genuine spill/retrieve demonstration |
 | `toy_branching_model.json` | Synthetic, verification-only fixture — bigger/branchier (22 layers, two parallel inception-style blocks, 16-64KB tensors), also forces a genuine spill/retrieve |
@@ -1228,3 +1263,165 @@ a `DRAM_access.csv` file that doesn't exist in this SCALE-Sim version.
       produced both `spm_plots/model_{64,128}kb_8x8.png` (real files, ~200KB
       each, confirmed on disk, not just claimed in the log) and
       `results/run_<timestamp>_8x8.csv`.
+
+27. **Found and fixed a real gap: `visualize_spm.py` couldn't accept a raw
+    `.tflite` -- unlike `run_cosma.py`/`run_experiments.py`, it never
+    called `model_resolver`, so passing a `.tflite` straight to
+    `--model-json` hit `graph_builder.load_graph()`'s `json.load()` on a
+    binary flatbuffer and crashed with `UnicodeDecodeError`.** Found while
+    the user was working on a remote machine (`wil`) with only `.tflite`
+    inputs on hand for Inception-V3 -- surfaced two separate problems in
+    the same session, both worth recording:
+    - **The actual gap**: `visualize_spm.py`'s `main()` called
+      `graph_builder.load_graph(args.model_json)` directly. Fixed by
+      importing `helpers.model_resolver` and calling
+      `model_resolver.resolve_model_json(args.model_json, args.exporter,
+      args.export_dir, args.force_export)` first, exactly like
+      `run_cosma.py` does -- added matching `--exporter`/`--export-dir`/
+      `--force-export` CLI flags, and switched the two other
+      `args.model_json` call sites (`default_out_path()`, the plot title)
+      to use the resolved path. `model_resolver.py` imports only `os`/
+      `subprocess`/`sys` -- no `scalesim` -- so this doesn't break the
+      module's documented "never imports anything under `scalesim/`, no
+      `PYTHONPATH` needed" property; verified by re-running `python3
+      visualize_spm.py --model-json <...>.tflite --bounds-only` with no
+      `PYTHONPATH` set at all and confirming it still worked.
+    - **A separate, non-bug gotcha along the way**: an earlier command on
+      the same remote machine passed `--config` (and `--models`) as
+      absolute paths copied from the local machine
+      (`/home/george/Desktop/SCALE-Sim/configs/scale.cfg`), which don't
+      exist on `wil` (`grizos@wil:/data/grizos/Scale-Sim-SPM`). Python's
+      `configparser.read()` silently no-ops on a missing file instead of
+      raising, so the failure surfaced many calls later as a confusing
+      `configparser.NoSectionError: No section: 'general'` inside
+      `scale_config.py`, not as a file-not-found at the actual mistake.
+      Not a code bug -- documented as a caveat in `STATUS.md` instead,
+      with the fix being to always pass paths relative to `cosma/` (e.g.
+      `../configs/scale.cfg`) in commands meant to run on more than one
+      machine.
+    - Real numbers obtained this way for the full Inception-V3 model on
+      `wil`: `M_R == MPMF == 8297856` bytes (8103.38 KB) at t=2
+      (`CONV2D`) -- floor equals ceiling again, consistent with every
+      other real model tested so far (item 19/§2), and explains the
+      earlier `AssertionError: tensor 3 (2841728 bytes) does not fit in
+      the 65536/131072/262144-byte SPM budget` errors at 64/128/256KB --
+      those budgets were always going to fail, well below this model's
+      true 8103.38KB floor.
+    - Added the explicit "bounds-only -> feed into run_experiments.py"
+      recipe to §3 above, since this was the first time the two tools
+      were actually chained together end-to-end by a user rather than
+      just documented as two separate, adjacent commands.
+
+28. **Added a real, live, byte-addressed SPM allocator (`helpers/spm_allocator.py`)
+    that replays every solved plan's Create/Preserve/Spill/Retrieve transitions
+    during `run_cosma_aware()`, independently verifying physical realizability
+    at the declared budget** -- not to get different numbers (a real, decisive
+    finding along the way proved that's structurally impossible for a correctly-
+    solved plan, see below), but because nothing in the pipeline previously
+    verified the ILP's plan was actually physically realizable; it was simply
+    trusted.
+    - **How this started**: debugging a `wil` remote run (item 27) raised the
+      question of whether `scale.cfg`'s SRAM sizing ever interacts with COSMA's
+      `--budget-kb` at all. Investigation (two Explore agents, full mechanical
+      trace) found it doesn't: `baseline.py`'s `_make_memory_system()` never
+      reads `scale.cfg`'s SRAM fields -- every layer's buffer is sized to
+      exactly that layer's own real tensor bytes, always, regardless of budget.
+    - **A decisive finding that reframed the whole exercise**: under this
+      project's actual `InterfaceBandwidth: CALC` config, the ifmap/filter read
+      buffer class (`ReadBufferEstimateBw`) is *unconditionally stall-free by
+      design* -- confirmed in SCALE-Sim's own source comment ("In estimate mode,
+      operation is stall free"), and independently confirmed empirically: sweeping
+      `IfmapSramSzkB`/`FilterSramSzkB`/`OfmapSramSzkB` from 1024KB down to 1KB on
+      MobileNetV2 @64KB produced byte-for-byte identical cycle counts every time.
+      Separately, COSMA's own Eq.9 already guarantees `sum(resident bytes at t)
+      <= budget` for every t, and today's code already sizes every layer's own
+      buffer to exactly its own real tensor bytes (the tightest sizing already
+      possible) -- so a capacity-driven buffer-size clamp would, for any
+      `Optimal` solve, provably never produce a smaller number than today's.
+      Building that (originally planned, per the prior version of this session's
+      plan file) would have been real effort for a proven no-op.
+    - **The user's actual ask, once this was surfaced**: *"i need to have
+      realistic behaviour of an spm data traffic with a fixed size, so cosma can
+      calculate a plan for that size and a specific model, and scale-sim can
+      execute that plan with a specific size of spm in order to map the traffic
+      accurately."* Read correctly, this is about fidelity/independent
+      verification, not different numbers -- `baseline.py`'s real SCALE-Sim loop
+      blindly trusts `resident_action`'s per-tensor flags with zero live,
+      cross-layer bookkeeping of its own. `SpmAllocator` is that missing check.
+    - **Design**: `SpmAllocator.step(t)` replays one timestep's transitions
+      against a live `{tensor_id: (address, size)}` map, called once per
+      timestep from `_run_layers()`'s existing loop (including non-conv
+      timesteps, which never reach `_simulate_layer()` but can still hold a
+      resident tensor). Raises `SpmAllocationError` (carrying `.tensor_id`/
+      `.timestep`/`.reason`) on any physical inconsistency: double-allocate,
+      address collision, budget overflow, free/preserve without residency, or a
+      preserved tensor's live address disagreeing with `spm_plan`. Also
+      cross-checks the live occupant set against `spm_plan`'s own claimed
+      resident set every timestep -- genuinely non-tautological, since
+      `resident_action`/`spm_plan` are built by two separate loops over the same
+      solved ILP variables in `cosma_Ilp.extract_results()`.
+    - **A real bug found and fixed during verification, not just a hypothetical
+      the design anticipated**: the first version only freed a tensor on an
+      explicit `'S'` action. Running it against `toy_spill_model.json` (@200B)
+      raised a false collision -- tensor 11 is `'P'` at t=2 and then has *no*
+      entry at all at t=3 (its last consumer already ran; nothing ever retrieves
+      it again), yet tensor 10's real Retrieve at t=3 correctly reuses tensor
+      11's old address. This is optimal ILP behavior, not a bug in the ILP: Eq.12
+      charges real bytes for an explicit Spill even if never retrieved, but
+      charges nothing for just letting `P` lapse, so the solver has no reason to
+      ever mark `'S'` for a tensor it will never retrieve again. **Fixed** by
+      freeing anything no longer in `spm_plan`'s claimed resident set at each
+      t -- explicit Spill or implicit lapse, uniformly -- before processing any
+      Create/Retrieve at that timestep (ordering also matters for a second, real
+      reason: the same fixture spills tensor 10 and creates tensor 11 into its
+      freed address in the very same timestep, t=1).
+    - **Verified end-to-end after the fix**: `toy_spill_model.json` (@200B) and
+      `toy_branching_model.json` (@176KB) both replay cleanly via the standalone
+      (SCALE-Sim-free) path with a genuine spill and retrieve each, zero
+      `SpmAllocationError`s. Four deliberately-broken-plan cases (overlapping
+      addresses, a `'P'` with no prior residency, an `'S'` for a never-resident
+      tensor, and a real solved plan with one address mutated post-hoc) each
+      correctly raised `SpmAllocationError` with the expected `.reason`. All
+      three previously-validated real-model results were re-run through the
+      full `run_cosma_aware()` path with a pinned config (matching the exact
+      array size each was originally measured at, since the live `scale.cfg` was
+      being actively edited by the user mid-session for unrelated experimentation)
+      and reproduced byte-for-byte identical numbers with zero violations:
+      MobileNetV2-CIFAR10 @64KB (99176/86439 credit, 32.5%, 1.0016x), ResNet-20-
+      CIFAR10 @256KB (227632/2559421, 91.1%, 1.0299x), SqueezeNet-small-CIFAR100
+      @96KB (499456/598888, 92.0%, 1.3599x) -- exactly confirming the Eq.9
+      argument above: real verification now runs on every COSMA-aware
+      simulation, and it changes nothing about the reported numbers.
+    - **Known gap, not silently skipped**: no fixture exercises the full
+      `run_cosma_aware()` -> allocator -> real SCALE-Sim path with an actual
+      spill/retrieve happening together (real models never spill; the toy
+      fixtures have no real conv params and can't run through `baseline.py`/
+      `topology_builder.py` at all -- confirmed via their own `_comment` fields).
+      Building a real-conv-param fixture that also forces a spill is a natural
+      follow-up, not done here.
+    - `run_cosma_aware()`'s signature gained three new *required* params
+      (`spm_plan`, `tensors`, `memory_budget_bytes`) -- the one real call site
+      (`run_cosma.py`) was updated; `run_experiments.py` needed no changes since
+      it only ever calls `run_cosma.run_cosma()`, never `run_cosma_aware()`
+      directly. `_make_memory_system()`/`_simulate_layer()` needed no changes at
+      all -- the allocator gates what happens before they run, not what they
+      compute.
+    - **A second real gap found and fixed right after, while checking "does this
+      have any output so I can tell it worked?"**: the `[COSMA SPM] verified N
+      timesteps, peak occupancy X/Y bytes, 0 violations` summary line was
+      originally gated behind `verbose`, and `run_cosma.py`'s call to
+      `baseline.run_cosma_aware()` never actually passed `verbose` through at
+      all (a pre-existing gap, not introduced by this change -- the same was
+      already true for `_simulate_layer()`'s own SCALE-Sim-level verbosity), so
+      the line silently never printed. First fix attempt (threading `verbose`
+      through) surfaced a second problem: that same `verbose` flag also enables
+      SCALE-Sim's own internal per-layer `tqdm` progress bars
+      (`single_layer_sim.run()` -> `service_memory_requests()`) -- confirmed by
+      running with it enabled: ~50 progress-bar lines for MobileNetV2's 64
+      layers, which would bury the one line actually worth seeing. **Final
+      fix**: made the summary print unconditional (not gated on `verbose` at
+      all) instead of threading the flag through -- it's cheap (already-computed
+      values) and is meant to be the default proof-of-verification signal,
+      without opting into engine-level noise to get it. Verified: output is now
+      23 lines (was 75 with the noisy version), zero `tqdm` bars, same numbers
+      as before, `[COSMA SPM]` line present.

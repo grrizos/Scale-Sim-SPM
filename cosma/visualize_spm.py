@@ -30,9 +30,12 @@ produced, and is independently re-fetched fresh at every consuming
 timestep (never cached between uses, even adjacent ones).
 
 Run from cosma/ (no PYTHONPATH needed -- unlike run_cosma.py/baseline.py,
-this file never imports anything under scalesim/):
+this file never imports anything under scalesim/; model_resolver doesn't
+either, so --model-json accepts a raw .tflite too, auto-exported/cached
+under cosma/_exported/ the same way run_cosma.py/run_experiments.py do):
     python3 visualize_spm.py --model-json model.json --budget-kb 64
     python3 visualize_spm.py --model-json model.json --bounds-only
+    python3 visualize_spm.py --model-json some_model.tflite --bounds-only
 
 No currently-exported real model (see cosma/ITERATION_HISTORY.md) ever
 triggers a nonzero spill/retrieve -- their structural minimum (M_R) and
@@ -52,6 +55,7 @@ from matplotlib.lines import Line2D
 
 from helpers import cosma_Ilp
 from helpers import graph_builder
+from helpers import model_resolver
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_MODEL_JSON = os.path.join(HERE, 'model.json')
@@ -385,7 +389,16 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                       formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--model-json', default=DEFAULT_MODEL_JSON,
-                         help='Path to a model.json (default: cosma/model.json).')
+                         help='Path to a model.json, or a raw .tflite to auto-export '
+                              '(default: cosma/model.json).')
+    parser.add_argument('--exporter', default=model_resolver.DEFAULT_EXPORTER,
+                         help='Path to trim/python_scripts/export_model.py, used only '
+                              'when --model-json is a .tflite.')
+    parser.add_argument('--export-dir', default=model_resolver.DEFAULT_EXPORT_DIR,
+                         help='Where auto-exported model.json files are cached '
+                              '(default: cosma/_exported).')
+    parser.add_argument('--force-export', action='store_true',
+                         help='Re-export even if a cached model.json already exists.')
     parser.add_argument('--budget-kb', type=float, default=128,
                          help='SPM budget in KB for the COSMA panel (default: 128). '
                               'Ignored with --bounds-only.')
@@ -398,7 +411,9 @@ def main():
                          help='CBC solve time limit, seconds (default: 120).')
     args = parser.parse_args()
 
-    nodes, tensors = graph_builder.load_graph(args.model_json)
+    model_json_path = model_resolver.resolve_model_json(
+        args.model_json, args.exporter, args.export_dir, args.force_export)
+    nodes, tensors = graph_builder.load_graph(model_json_path)
 
     if args.bounds_only:
         print_budget_bounds(nodes, tensors)
@@ -408,9 +423,9 @@ def main():
     baseline_action = compute_baseline_resident_action(nodes, tensors)
     result = solve_ilp_only(nodes, tensors, memory_budget_bytes, args.time_limit)
 
-    out_path = args.out or default_out_path(args.model_json, memory_budget_bytes)
+    out_path = args.out or default_out_path(model_json_path, memory_budget_bytes)
     render_comparison(nodes, tensors, baseline_action, result, memory_budget_bytes, out_path,
-                       title=f"{os.path.basename(args.model_json)} -- SPM occupancy: "
+                       title=f"{os.path.basename(model_json_path)} -- SPM occupancy: "
                              f"baseline vs. COSMA")
     print_tensor_table(tensors, baseline_action, result)
     print(f"\nSaved SPM occupancy comparison to {out_path}")

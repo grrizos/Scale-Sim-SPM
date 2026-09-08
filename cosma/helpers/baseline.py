@@ -55,6 +55,7 @@ from scalesim.memory.cosma_resident_buffers import (
 
 from .topology_builder import build_topology
 from .graph_builder import compute_size_bytes
+from .spm_allocator import SpmAllocator
 
 # cosma/ (one level up from this file's own helpers/ directory) -- kept
 # pointing there, not at helpers/, so the default paths below (and every
@@ -221,7 +222,13 @@ def _simulate_layer(config, topo, layout, row: int, layer: dict,
 
 def _run_layers(model_json_path: str, config_path: str,
                  topology_csv_path: str, verbose: bool,
-                 resident_action: dict = None) -> Dict[int, dict]:
+                 resident_action: dict = None, spm_plan: dict = None,
+                 tensors: dict = None, memory_budget_bytes: int = None) -> Dict[int, dict]:
+    if resident_action is not None:
+        assert spm_plan is not None and tensors is not None and memory_budget_bytes is not None, (
+            "run_cosma_aware()'s plan (resident_action/spm_plan/tensors/"
+            "memory_budget_bytes) must be supplied together")
+
     if topology_csv_path is None:
         topology_csv_path = os.path.join(HERE, 'topology.csv')
 
@@ -242,14 +249,39 @@ def _run_layers(model_json_path: str, config_path: str,
         model = json.load(f)
     tensor_shapes: Dict[int, dict] = {t['id']: t for t in model['tensors']}
 
+    allocator = None
+    if resident_action is not None:
+        allocator = SpmAllocator(tensors, spm_plan, resident_action, memory_budget_bytes)
+
     row_to_stats: Dict[int, dict] = {}
     for layer in model['layers']:
         lid = layer['id']
+        if allocator is not None:
+            # Replay every timestep's C/P/S/R transitions, including
+            # non-conv ones (ADD, DENSE, ...) below -- a tensor can be
+            # legitimately resident/spilled through a non-conv timestep
+            # too, and skipping those would silently corrupt the
+            # allocator's live state. Raises SpmAllocationError loudly if
+            # the solved plan is ever physically inconsistent -- see
+            # spm_allocator.py's module docstring.
+            allocator.step(lid)
         if lid not in layer_id_to_row:
             continue
         row_to_stats[layer_id_to_row[lid]] = _simulate_layer(
             config, topo, layout, layer_id_to_row[lid], layer, tensor_shapes,
             verbose, resident_action=resident_action)
+
+    if allocator is not None:
+        # Deliberately unconditional, not gated on `verbose` -- that flag
+        # also enables SCALE-Sim's own internal per-layer tqdm progress
+        # bars (single_layer_sim.run() -> service_memory_requests()),
+        # which would flood the terminal with dozens of bars just to
+        # surface this one cheap, already-computed summary line. This is
+        # the one piece of proof-it-actually-ran output a caller gets by
+        # default, without opting into engine-level noise for it.
+        print(f"[COSMA SPM] verified {allocator.steps_taken()} timesteps, "
+              f"peak occupancy {allocator.peak_occupied_bytes()}/{memory_budget_bytes} "
+              f"bytes, 0 violations")
 
     layer_stats: Dict[int, dict] = {}
     for layer in model['layers']:
@@ -278,6 +310,7 @@ def run_baseline(model_json_path: str, config_path: str,
 
 
 def run_cosma_aware(model_json_path: str, config_path: str, resident_action: dict,
+                     spm_plan: dict, tensors: dict, memory_budget_bytes: int,
                      topology_csv_path: str = None,
                      verbose: bool = False) -> Dict[int, dict]:
     """
@@ -289,9 +322,19 @@ def run_cosma_aware(model_json_path: str, config_path: str, resident_action: dic
     see _simulate_layer()'s docstring. Unlike run_baseline(), this does
     depend on the SPM budget (indirectly, via which resident_action was
     solved for) and must be re-run per budget.
+
+    spm_plan/tensors/memory_budget_bytes (also from extract_results(), plus
+    graph_builder.load_graph()'s own tensors dict, plus the same budget the
+    ILP was solved for) drive a live SpmAllocator replay alongside the real
+    SCALE-Sim simulation -- an independent, physically-checked verification
+    that resident_action's claims are actually realizable at this budget,
+    not just trusted. Required (no default) so this doesn't silently keep
+    running without that check after this signature change -- see
+    spm_allocator.py's module docstring for why it exists.
     """
     return _run_layers(model_json_path, config_path, topology_csv_path, verbose,
-                        resident_action=resident_action)
+                        resident_action=resident_action, spm_plan=spm_plan,
+                        tensors=tensors, memory_budget_bytes=memory_budget_bytes)
 
 
 if __name__ == '__main__':
