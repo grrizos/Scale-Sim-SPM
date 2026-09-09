@@ -277,7 +277,7 @@ def extract_mpmf_schedule_results(variables, T, A) -> dict:
     return {'mpmf_bytes': val(M_peak), 'schedule': schedule}
 
 
-def compute_true_mpmf_bytes(nodes, tensors, time_limit_sec=None) -> Tuple[int, dict]:
+def compute_true_mpmf_bytes(nodes, tensors, time_limit_sec=None, solver='cbc') -> Tuple[int, dict]:
     """
     The paper's real M_P (not compute_mpmf_bytes()'s fixed-schedule proxy):
     build_mpmf_schedule_model() + solve() + extract_mpmf_schedule_results()
@@ -289,11 +289,35 @@ def compute_true_mpmf_bytes(nodes, tensors, time_limit_sec=None) -> Tuple[int, d
 
     Returns (bytes, schedule). Raises RuntimeError on a non-Optimal status,
     same pattern as run_cosma.py's main-pipeline solve.
+
+    time_limit_sec: None (default) means unbounded. If you do pass a limit
+    and get back a non-Optimal status (including 'Infeasible'), don't
+    trust it as a proof: CBC/PuLP's status reporting under a time limit is
+    not reliable, and a solve that merely ran out of time can come back
+    labeled 'Infeasible' rather than 'Not Solved'. Confirmed directly on a
+    real model (_exported/fake2/) -- reported 'Infeasible' at the default
+    120s CLI limit despite the graph's own execution order being a
+    hand-verified, zero-constraint-violation feasible solution to this
+    exact model. See visualize_spm.py's solve_ilp_only() docstring for the
+    same caveat on the fixed-schedule solve.
     """
     prob, variables, T, A = build_mpmf_schedule_model(nodes, tensors)
-    status = solve(prob, time_limit_sec=time_limit_sec)
+    status = solve(prob, time_limit_sec=time_limit_sec, solver=solver)
     if status != 'Optimal':
-        raise RuntimeError(f"MPMF schedule ILP did not solve to optimality: status={status}")
+        # The CBC/PuLP mislabeling risk below is specific to CBC's own
+        # status parsing -- Gurobi's status codes reliably distinguish
+        # "time limit reached" from "proven infeasible", so this caveat
+        # doesn't apply when solver='gurobi'.
+        caveat = (
+            f" -- a time limit ({time_limit_sec}s) was set, so this status is NOT "
+            f"necessarily a proof: a solve that simply didn't finish in time can come "
+            f"back mislabeled 'Infeasible' rather than 'Not Solved'. Retry with a "
+            f"longer time_limit_sec or None (unbounded) before trusting this as a "
+            f"real infeasibility."
+            if time_limit_sec and solver == 'cbc' else ""
+        )
+        raise RuntimeError(f"MPMF schedule ILP did not solve to optimality: "
+                            f"status={status}{caveat}")
     result = extract_mpmf_schedule_results(variables, T, A)
     return result['mpmf_bytes'], result['schedule']
 
@@ -582,9 +606,28 @@ def build_cosma_model(nodes, tensors, memory_budget_bytes: int, free_schedule: b
     return prob, variables, T, A
 
 
-def solve(prob, time_limit_sec=None, msg=False):
-    solver = pulp.PULP_CBC_CMD(msg=msg, timeLimit=time_limit_sec)
-    prob.solve(solver)
+def solve(prob, time_limit_sec=None, msg=False, solver='cbc'):
+    """
+    solver: 'cbc' (default -- PuLP's bundled open-source solver, no license
+        needed, always available) or 'gurobi' (commercial, requires a
+        working license -- see docs/STATUS.md's solver gap note: CBC
+        measured ~600x slower than Gurobi on Inception-V3-sized problems,
+        178s vs. the paper's own 0.296s average). Uses pulp.GUROBI (the
+        in-process gurobipy binding, not GUROBI_CMD, which needs the
+        separate command-line binary we haven't installed) -- raises
+        pulp.PulpSolverError with a clear message if gurobipy isn't
+        installed or no license activates, rather than silently falling
+        back to CBC (a silent fallback would hide exactly the solver
+        identity this project has been careful to always disclose
+        alongside every solve-time number).
+    """
+    if solver == 'gurobi':
+        pulp_solver = pulp.GUROBI(msg=msg, timeLimit=time_limit_sec)
+    elif solver == 'cbc':
+        pulp_solver = pulp.PULP_CBC_CMD(msg=msg, timeLimit=time_limit_sec)
+    else:
+        raise ValueError(f"Unknown solver {solver!r} -- expected 'cbc' or 'gurobi'")
+    prob.solve(pulp_solver)
     return pulp.LpStatus[prob.status]
 
 

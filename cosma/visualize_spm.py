@@ -99,8 +99,8 @@ def compute_baseline_resident_action(nodes, tensors) -> dict:
     return action
 
 
-def solve_ilp_only(nodes, tensors, memory_budget_bytes: int, ilp_time_limit_sec: float = 120,
-                    free_schedule: bool = False) -> dict:
+def solve_ilp_only(nodes, tensors, memory_budget_bytes: int, ilp_time_limit_sec: float = None,
+                    free_schedule: bool = False, solver: str = 'cbc') -> dict:
     """
     Steps 1-2,5-7 of run_cosma.run_cosma() only (graph + ILP) -- no
     baseline.py, no SCALE-Sim. On infeasibility or a non-optimal solve,
@@ -111,6 +111,22 @@ def solve_ilp_only(nodes, tensors, memory_budget_bytes: int, ilp_time_limit_sec:
     free_schedule: see cosma_Ilp.build_cosma_model()'s docstring -- lets
         the ILP choose the operator order itself instead of fixing it to
         model.json's. Off by default; expect a slower solve when enabled.
+
+    ilp_time_limit_sec: None (default) means unbounded -- matches
+        run_cosma.py's own default (see its own --time-limit docstring,
+        item 29 in ITERATION_HISTORY.md: defaulting to a bounded time
+        limit was removed there specifically because CBC/PuLP's status
+        reporting under a time limit is not reliable -- a solve that
+        merely didn't finish in time can come back labeled 'Infeasible'
+        (not just 'Not Solved'), which is indistinguishable from a
+        genuine proof of infeasibility unless you already know better.
+        Confirmed directly: a real model's free-schedule M_P solve
+        (cosma_Ilp.compute_true_mpmf_bytes(), a much harder problem than
+        this fixed-schedule one -- see its own docstring) reported
+        'Infeasible' under a time limit despite the graph's own execution
+        order being a hand-verified, zero-violation feasible solution.
+        Pass an explicit value only if you're prepared for a false
+        'Infeasible'/'Not Solved' on a large model.
     """
     def _bounds_message() -> str:
         floor_b, floor_t = cosma_Ilp.compute_structural_minimum_bytes(nodes, tensors)
@@ -127,9 +143,17 @@ def solve_ilp_only(nodes, tensors, memory_budget_bytes: int, ilp_time_limit_sec:
 
     prob, variables, T, A = cosma_Ilp.build_cosma_model(
         nodes, tensors, memory_budget_bytes, free_schedule=free_schedule)
-    status = cosma_Ilp.solve(prob, time_limit_sec=ilp_time_limit_sec)
+    status = cosma_Ilp.solve(prob, time_limit_sec=ilp_time_limit_sec, solver=solver)
     if status != 'Optimal':
-        raise RuntimeError(f"COSMA ILP did not solve to optimality: status={status}\n"
+        caveat = (
+            f" -- a time limit ({ilp_time_limit_sec}s) was set, so this status is "
+            f"NOT necessarily a proof: CBC/PuLP can report 'Infeasible' (not just "
+            f"'Not Solved') for a solve that simply didn't finish in time -- retry "
+            f"with a longer --time-limit or omit it for an unbounded solve before "
+            f"trusting this as a real infeasibility."
+            if ilp_time_limit_sec and solver == 'cbc' else ""
+        )
+        raise RuntimeError(f"COSMA ILP did not solve to optimality: status={status}{caveat}\n"
                             f"{_bounds_message()}")
     return cosma_Ilp.extract_results(variables, T, A, tensors)
 
@@ -449,7 +473,8 @@ def print_budget_bounds(nodes, tensors) -> dict:
             'mpmf_bytes': ceil_b, 'mpmf_t': ceil_t}
 
 
-def print_true_mpmf(nodes, tensors, m_r_bytes: int, time_limit_sec: float = None) -> dict:
+def print_true_mpmf(nodes, tensors, m_r_bytes: int, time_limit_sec: float = None,
+                     solver: str = 'cbc') -> dict:
     """
     The paper's real M_P (§III-E1/Eq.13-15, cosma_Ilp.compute_true_mpmf_bytes()
     -- an actual free-schedule ILP solve, not print_budget_bounds()'s instant
@@ -460,7 +485,7 @@ def print_true_mpmf(nodes, tensors, m_r_bytes: int, time_limit_sec: float = None
     recomputed, since M_H needs it.
     """
     true_mp_bytes, schedule = cosma_Ilp.compute_true_mpmf_bytes(
-        nodes, tensors, time_limit_sec=time_limit_sec)
+        nodes, tensors, time_limit_sec=time_limit_sec, solver=solver)
     m_h_bytes = (m_r_bytes + true_mp_bytes) / 2
 
     print(f"True M_P (real ILP solve, §III-E1/Eq.13-15): {true_mp_bytes:>10d} bytes "
@@ -491,14 +516,21 @@ def main():
                          help='Print the M_R floor / MPMF ceiling and exit -- no ILP '
                               'solve, no plot, no SCALE-Sim.')
     parser.add_argument('--true-mpmf', action='store_true',
-                         help='With --bounds-only, also compute the paper\'s real M_P '
-                              '(free-schedule ILP solve, not the instant fixed-schedule '
-                              'proxy) and derived M_H. Not instant -- pays for a real '
-                              'solve, can be slow on a large model.')
+                         help='Print M_R, the paper\'s real M_P (a free-schedule ILP '
+                              'solve, not the instant fixed-schedule MPMF proxy), and '
+                              'derived M_H, then exit -- no plot, no SCALE-Sim. Implies '
+                              '--bounds-only. Not instant -- pays for a real ILP solve, '
+                              'can be slow on a large model.')
     parser.add_argument('--out', default=None,
                          help='Output PNG path (default: cosma/spm_plots/<model>_<budget>kb.png).')
-    parser.add_argument('--time-limit', type=float, default=120,
-                         help='CBC solve time limit, seconds (default: 120).')
+    parser.add_argument('--time-limit', type=float, default=None,
+                         help='CBC solve time limit, seconds. Default: unbounded -- run '
+                              'until CBC proves Optimal or Infeasible, however long that '
+                              'takes. Matches run_cosma.py\'s own default; a bounded time '
+                              'limit here can produce a false "Infeasible" for a solve '
+                              'that simply ran out of time (see solve_ilp_only()\'s '
+                              'docstring) -- only set this if you\'ve confirmed that '
+                              'risk is acceptable for your model.')
     parser.add_argument('--free-schedule', action='store_true',
                          help="Let the ILP choose the operator schedule itself instead of "
                               "fixing it to model.json's own order -- see "
@@ -510,23 +542,30 @@ def main():
                               "nothing in COSMA's ILP rewards compact placement, so the "
                               "raw addresses tend to scatter with pointless gaps (see "
                               "spm_allocator.compact_spm_plan()). Ignored with --bounds-only.")
+    parser.add_argument('--solver', choices=['cbc', 'gurobi'], default='gurobi',
+                         help="ILP solver backend (default: cbc, no license needed). "
+                              "'gurobi' requires a working Gurobi license -- see "
+                              "cosma_Ilp.solve()'s docstring -- but measured ~600x faster "
+                              "than CBC on Inception-V3-sized problems in this project's "
+                              "own profiling; worth using whenever available, especially "
+                              "with --true-mpmf/--free-schedule on a large model.")
     args = parser.parse_args()
 
     model_json_path = model_resolver.resolve_model_json(
         args.model_json, args.exporter, args.export_dir, args.force_export)
     nodes, tensors = graph_builder.load_graph(model_json_path)
 
-    if args.bounds_only:
+    if args.bounds_only or args.true_mpmf:
         bounds = print_budget_bounds(nodes, tensors)
         if args.true_mpmf:
             print_true_mpmf(nodes, tensors, bounds['structural_minimum_bytes'],
-                             time_limit_sec=args.time_limit)
+                             time_limit_sec=args.time_limit, solver=args.solver)
         return
 
     memory_budget_bytes = int(args.budget_kb * 1024)
     baseline_action = compute_baseline_resident_action(nodes, tensors)
     result = solve_ilp_only(nodes, tensors, memory_budget_bytes, args.time_limit,
-                             free_schedule=args.free_schedule)
+                             free_schedule=args.free_schedule, solver=args.solver)
 
     out_path = args.out or default_out_path(
         model_json_path, memory_budget_bytes,

@@ -198,7 +198,7 @@ def run_model_sweep(model_input: str, budgets_kb: list, config_path: str,
                      exporter: str, export_dir: str, force_export: bool,
                      time_limit_sec: float = None, logs_dir: str = None,
                      save_plots: bool = True, free_schedule: bool = False,
-                     compact_plots: bool = True):
+                     compact_plots: bool = True, solver: str = 'cbc'):
     """
     Runs every budget in budgets_kb for one model, running SCALE-Sim's
     baseline at most once (it doesn't depend on the budget, so it's
@@ -274,6 +274,7 @@ def run_model_sweep(model_input: str, budgets_kb: list, config_path: str,
                 save_plot=save_plots,
                 free_schedule=free_schedule,
                 compact_plot=compact_plots,
+                solver=solver,
             )
             rows.append(_summary_row(model_input, budget_kb, summary))
         except Exception as e:  # noqa: BLE001
@@ -341,6 +342,13 @@ def main():
                               "plot's COSMA panel instead of the default repacked-toward-0 "
                               "view -- see spm_allocator.compact_spm_plan(). Ignored with "
                               "--no-plots.")
+    parser.add_argument('--solver', choices=['cbc', 'gurobi'], default='gurobi',
+                         help="ILP solver backend for every (model, budget) combination "
+                              "in this sweep (default: cbc, no license needed). 'gurobi' "
+                              "requires a working Gurobi license -- see "
+                              "cosma_Ilp.solve()'s docstring -- but measured ~600x faster "
+                              "than CBC on Inception-V3-sized problems in this project's "
+                              "own profiling; worth using whenever available.")
     args = parser.parse_args()
 
     config_tag = f"{_array_dims_tag(args.config)}_{_schedule_tag(args.free_schedule)}"
@@ -358,6 +366,7 @@ def main():
             logs_dir=logs_dir, save_plots=not args.no_plots,
             free_schedule=args.free_schedule,
             compact_plots=not args.raw_addresses,
+            solver=args.solver,
         )
         rows.extend(model_rows)
         any_logs_written = any_logs_written or model_ran

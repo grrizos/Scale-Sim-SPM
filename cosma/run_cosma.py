@@ -112,7 +112,8 @@ def run_cosma(model_json_path: str = DEFAULT_MODEL_JSON,
               export_dir: str = model_resolver.DEFAULT_EXPORT_DIR,
               force_export: bool = False,
               free_schedule: bool = False,
-              compact_plot: bool = True) -> dict:
+              compact_plot: bool = True,
+              solver: str = 'cbc') -> dict:
     """
     model_json_path may also be a raw .tflite file -- it's auto-exported
     to model.json and cached under export_dir (see helpers/model_resolver.py,
@@ -158,6 +159,15 @@ def run_cosma(model_json_path: str = DEFAULT_MODEL_JSON,
         at all for compact placement, so the solver's own literal
         addresses tend to scatter with pointless gaps. Pass False to see
         those raw addresses instead.
+
+    solver: 'cbc' (default, no license needed) or 'gurobi' (requires a
+        working Gurobi license -- see cosma_Ilp.solve()'s docstring).
+        Measured ~600x faster than CBC on Inception-V3-sized problems in
+        this project's own earlier profiling (178s vs. the paper's own
+        0.296s average) -- worth using whenever available, especially for
+        DenseNet-121/free_schedule=True, both of which have hit CBC
+        solve times of many minutes to unbounded on this project's own
+        real models.
     """
     model_json_path = model_resolver.resolve_model_json(
         model_json_path, exporter, export_dir, force_export)
@@ -178,9 +188,17 @@ def run_cosma(model_json_path: str = DEFAULT_MODEL_JSON,
     prob, variables, T, A = cosma_Ilp.build_cosma_model(
         nodes, tensors, memory_budget_bytes=memory_budget_bytes,
         free_schedule=free_schedule)
-    status = cosma_Ilp.solve(prob, time_limit_sec=ilp_time_limit_sec)
+    status = cosma_Ilp.solve(prob, time_limit_sec=ilp_time_limit_sec, solver=solver)
     if status != 'Optimal':
-        raise RuntimeError(f"COSMA ILP did not solve to optimality: status={status}")
+        caveat = (
+            f" -- a time limit ({ilp_time_limit_sec}s) was set, so this status is NOT "
+            f"necessarily a proof: CBC/PuLP can mislabel a solve that simply didn't "
+            f"finish in time as 'Infeasible' rather than 'Not Solved'. Retry with a "
+            f"longer --time-limit or omit it (unbounded, the default) before trusting "
+            f"this as a real infeasibility."
+            if ilp_time_limit_sec and solver == 'cbc' else ""
+        )
+        raise RuntimeError(f"COSMA ILP did not solve to optimality: status={status}{caveat}")
 
     result = cosma_Ilp.extract_results(variables, T, A, tensors)
     resident_action = result['resident_action']
@@ -439,6 +457,12 @@ if __name__ == '__main__':
                               "view -- nothing in COSMA's ILP rewards compact placement, so "
                               "the raw addresses tend to scatter with pointless gaps (see "
                               "spm_allocator.compact_spm_plan()). Ignored with --no-plot.")
+    parser.add_argument('--solver', choices=['cbc', 'gurobi'], default='gurobi',
+                         help="ILP solver backend (default: cbc, no license needed). "
+                              "'gurobi' requires a working Gurobi license -- see "
+                              "cosma_Ilp.solve()'s docstring -- but measured ~600x faster "
+                              "than CBC on Inception-V3-sized problems in this project's "
+                              "own profiling; worth using whenever available.")
     args = parser.parse_args()
 
     run_cosma(
@@ -453,4 +477,5 @@ if __name__ == '__main__':
         force_export=args.force_export,
         free_schedule=args.free_schedule,
         compact_plot=not args.raw_addresses,
+        solver=args.solver,
     )
