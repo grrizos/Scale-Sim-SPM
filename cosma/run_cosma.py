@@ -183,13 +183,19 @@ def run_cosma(model_json_path: str = DEFAULT_MODEL_JSON,
         bandwidth_bytes_per_cycle = _default_bandwidth_words_per_cycle(config_path)
 
     if layer_stats is None:
-        layer_stats = baseline.run_baseline(model_json_path, config_path)
+        layer_stats = baseline.run_baseline(model_json_path, config_path, verbose=verbose)
 
     prob, variables, T, A = cosma_Ilp.build_cosma_model(
         nodes, tensors, memory_budget_bytes=memory_budget_bytes,
         free_schedule=free_schedule)
-    status = cosma_Ilp.solve(prob, time_limit_sec=ilp_time_limit_sec, solver=solver)
-    if status != 'Optimal':
+    # msg=verbose surfaces the solver's own native progress log (Gurobi's
+    # periodic explored-nodes/incumbent/gap/time lines, or CBC's console
+    # output) while the ILP solve is running -- otherwise a long solve
+    # produces zero output at all until it finishes, indistinguishable
+    # from a hang. See cosma_Ilp.solve()'s msg param.
+    status, has_feasible_incumbent = cosma_Ilp.solve(
+        prob, time_limit_sec=ilp_time_limit_sec, solver=solver, msg=verbose)
+    if status != 'Optimal' and not has_feasible_incumbent:
         caveat = (
             f" -- a time limit ({ilp_time_limit_sec}s) was set, so this status is NOT "
             f"necessarily a proof: CBC/PuLP can mislabel a solve that simply didn't "
@@ -199,6 +205,12 @@ def run_cosma(model_json_path: str = DEFAULT_MODEL_JSON,
             if ilp_time_limit_sec and solver == 'cbc' else ""
         )
         raise RuntimeError(f"COSMA ILP did not solve to optimality: status={status}{caveat}")
+    if status != 'Optimal':
+        print(f"WARNING: COSMA ILP did not prove optimality (status={status}) -- "
+              f"accepting Gurobi's best incumbent solution found so far (e.g. from "
+              f"a Ctrl+C interrupt or --time-limit) instead of a proven-optimal one. "
+              f"SPM addresses/schedule below are a feasible, but not provably "
+              f"optimal, plan.")
 
     result = cosma_Ilp.extract_results(variables, T, A, tensors)
     resident_action = result['resident_action']
@@ -215,7 +227,7 @@ def run_cosma(model_json_path: str = DEFAULT_MODEL_JSON,
     cosma_stats = baseline.run_cosma_aware(
         model_json_path, config_path, resident_action,
         spm_plan=result['spm_plan'], tensors=tensors,
-        memory_budget_bytes=memory_budget_bytes, schedule=schedule)
+        memory_budget_bytes=memory_budget_bytes, schedule=schedule, verbose=verbose)
 
     CONV_LIKE_OPS = ('CONV2D', 'DEPTHWISE_CONV2D')
 
@@ -343,6 +355,7 @@ def run_cosma(model_json_path: str = DEFAULT_MODEL_JSON,
 
     summary = {
         'status': status,
+        'ilp_proven_optimal': status == 'Optimal',
         'memory_budget_bytes': memory_budget_bytes,
         'bandwidth_bytes_per_cycle': bandwidth_bytes_per_cycle,
         'baseline_total_cycles': baseline_total_cycles,
@@ -367,7 +380,8 @@ def run_cosma(model_json_path: str = DEFAULT_MODEL_JSON,
 
     if verbose:
         print(f"SPM budget: {memory_budget_bytes} bytes")
-        print(f"ILP status: {status}")
+        print(f"ILP status: {status}"
+              f"{'' if status == 'Optimal' else ' (accepted feasible incumbent, NOT proven optimal)'}")
         print(f"--- COSMA's contribution (real, SCALE-Sim-engine-simulated) ---")
         print(f"Ifmap bytes avoided by keeping activations resident ('P'): "
               f"{total_ifmap_residency_credit_bytes}")

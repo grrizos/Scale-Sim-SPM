@@ -80,13 +80,22 @@ def build_topology(model_json_path: str, csv_path: str) -> Dict[int, int]:
 
 
 if __name__ == '__main__':
+    import argparse
     import os
-    # cosma/ (one level up from helpers/), where model.json/topology.csv live.
+
+    # cosma/ (one level up from helpers/), where model.json/topology.csv
+    # live by default.
     here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    mapping = build_topology(
-        os.path.join(here, 'model.json'),
-        os.path.join(here, 'topology.csv'),
-    )
-    print(f"Wrote {len(mapping)} conv-like layers to topology.csv")
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--model-json', default=os.path.join(here, 'model.json'),
+                         help='Path to model.json (default: cosma/model.json).')
+    parser.add_argument('--out-csv', default=os.path.join(here, 'topology.csv'),
+                         help='Path to write the topology CSV to '
+                              '(default: cosma/topology.csv).')
+    args = parser.parse_args()
+
+    mapping = build_topology(args.model_json, args.out_csv)
+    print(f"Wrote {len(mapping)} conv-like layers to {args.out_csv}")
     print(f"First few mappings (layer id -> row): "
           f"{dict(list(mapping.items())[:5])}")

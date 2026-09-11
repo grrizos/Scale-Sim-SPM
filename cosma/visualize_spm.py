@@ -143,8 +143,9 @@ def solve_ilp_only(nodes, tensors, memory_budget_bytes: int, ilp_time_limit_sec:
 
     prob, variables, T, A = cosma_Ilp.build_cosma_model(
         nodes, tensors, memory_budget_bytes, free_schedule=free_schedule)
-    status = cosma_Ilp.solve(prob, time_limit_sec=ilp_time_limit_sec, solver=solver)
-    if status != 'Optimal':
+    status, has_feasible_incumbent = cosma_Ilp.solve(
+        prob, time_limit_sec=ilp_time_limit_sec, solver=solver)
+    if status != 'Optimal' and not has_feasible_incumbent:
         caveat = (
             f" -- a time limit ({ilp_time_limit_sec}s) was set, so this status is "
             f"NOT necessarily a proof: CBC/PuLP can report 'Infeasible' (not just "
@@ -155,6 +156,10 @@ def solve_ilp_only(nodes, tensors, memory_budget_bytes: int, ilp_time_limit_sec:
         )
         raise RuntimeError(f"COSMA ILP did not solve to optimality: status={status}{caveat}\n"
                             f"{_bounds_message()}")
+    if status != 'Optimal':
+        print(f"WARNING: COSMA ILP did not prove optimality (status={status}) -- "
+              f"accepting Gurobi's best incumbent found so far instead of a "
+              f"proven-optimal solution.")
     return cosma_Ilp.extract_results(variables, T, A, tensors)
 
 

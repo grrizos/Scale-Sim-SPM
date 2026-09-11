@@ -41,9 +41,10 @@ result around instead.
 import argparse
 import contextlib
 import csv
-import io
 import os
 import sys
+import threading
+import time
 
 from helpers import baseline
 from helpers import cosma_Ilp
@@ -167,31 +168,89 @@ def _log_file_name(model_json_path: str, budget_kb: float,
     return f"{name}_{array_tag}_{budget_str}kb_{schedule_tag}.log"
 
 
+_HEARTBEAT_INTERVAL_SEC = 20
+
+
+def _start_heartbeat(model_input: str, budget_kb: float, log_path: str = None) -> threading.Event:
+    """
+    Prints a short "still running" line to stderr every
+    _HEARTBEAT_INTERVAL_SEC seconds for as long as the returned Event
+    stays unset -- a fallback liveness signal for whatever phase isn't
+    producing its own output right now (graph loading, ILP presolve
+    before the solver's first log line, model construction, ...).
+    Independent of stdout, so it shows up on the real terminal even
+    though _run_and_log() redirects run_cosma()'s stdout to a log file
+    rather than the terminal. Caller must call .set() on the returned
+    Event once the run finishes, to stop the background thread.
+    """
+    stop = threading.Event()
+    start = time.monotonic()
+
+    def _beat():
+        while not stop.wait(_HEARTBEAT_INTERVAL_SEC):
+            elapsed = time.monotonic() - start
+            where = f" (live detail: {log_path})" if log_path else ""
+            print(f"[heartbeat] still running: model={model_input} "
+                  f"budget={budget_kb}KB elapsed={elapsed:.0f}s{where}", file=sys.stderr)
+
+    threading.Thread(target=_beat, daemon=True).start()
+    return stop
+
+
 def _run_and_log(logs_dir: str, log_name: str, model_input: str, budget_kb: float,
                   **run_cosma_kwargs) -> dict:
     """
-    Calls run_cosma.run_cosma(verbose=True) with stdout captured instead
-    of printed live (so a big sweep doesn't flood the terminal with every
-    run's full report), and -- if logs_dir is set -- writes that captured
-    text to logs_dir/log_name, the same detail level run_cosma.py alone
-    would show for this exact (model, budget). Re-raises on failure after
-    still saving whatever was captured (including the traceback), so a
-    failing combination leaves a log to look at too.
+    Calls run_cosma.run_cosma(verbose=True) with stdout redirected
+    straight to logs_dir/log_name (opened once, flushed on every write)
+    instead of buffered silently in memory until the whole call finishes
+    -- the same detail level run_cosma.py alone would show for this exact
+    (model, budget), but visible via `tail -f` on that file *as it
+    happens*: the ILP solver's own native progress (see
+    cosma_Ilp.solve()'s msg param, now wired to verbose=True here) and
+    SCALE-Sim's per-layer progress (baseline.py's verbose param, same
+    wiring) both land in it live, instead of only appearing once a
+    potentially very long solve/simulation completes. A lightweight
+    heartbeat (see _start_heartbeat()) prints straight to the terminal
+    every _HEARTBEAT_INTERVAL_SEC seconds regardless, so there's a
+    liveness signal even when logs_dir is unset (nothing to tail) or
+    during a stretch with no solver/engine output of its own yet.
+    Re-raises on failure after still saving whatever was captured
+    (including the traceback), so a failing combination leaves a log to
+    look at too.
     """
-    buf = io.StringIO()
     header = f"model: {model_input}\nbudget: {budget_kb} KB\n{'=' * 60}\n"
+    log_path = os.path.join(logs_dir, log_name) if logs_dir else None
+    log_file = None
+    heartbeat_stop = None
     try:
-        with contextlib.redirect_stdout(buf):
-            summary = run_cosma.run_cosma(verbose=True, **run_cosma_kwargs)
+        if log_path:
+            os.makedirs(logs_dir, exist_ok=True)
+            # buffering=1 (line-buffered) so a plain regular file still
+            # flushes on every newline -- Python only does that
+            # automatically for a real terminal, and without it `tail -f`
+            # on this file would show nothing until enough output
+            # accumulated to fill the default block buffer (or the file
+            # closed), defeating the whole point of writing it
+            # incrementally.
+            log_file = open(log_path, 'w', buffering=1)
+            log_file.write(header)
+        heartbeat_stop = _start_heartbeat(model_input, budget_kb, log_path)
+        if log_file is not None:
+            with contextlib.redirect_stdout(log_file):
+                summary = run_cosma.run_cosma(verbose=True, **run_cosma_kwargs)
+        else:
+            summary = run_cosma.run_cosma(verbose=False, **run_cosma_kwargs)
         return summary
     except Exception as e:
-        buf.write(f"\n{type(e).__name__}: {e}\n")
+        if log_file is not None:
+            log_file.write(f"\n{type(e).__name__}: {e}\n")
+            log_file.flush()
         raise
     finally:
-        if logs_dir:
-            os.makedirs(logs_dir, exist_ok=True)
-            with open(os.path.join(logs_dir, log_name), 'w') as f:
-                f.write(header + buf.getvalue())
+        if heartbeat_stop is not None:
+            heartbeat_stop.set()
+        if log_file is not None:
+            log_file.close()
 
 
 def run_model_sweep(model_input: str, budgets_kb: list, config_path: str,
@@ -252,7 +311,21 @@ def run_model_sweep(model_input: str, budgets_kb: list, config_path: str,
 
     try:
         print(f"  running SCALE-Sim baseline for {model_input} ...", file=sys.stderr)
-        layer_stats = baseline.run_baseline(model_json_path, config_path)
+        # verbose=True re-enables SCALE-Sim's own per-layer tqdm progress
+        # (writes straight to stderr, not affected by _run_and_log()'s
+        # stdout redirect below -- this call happens before that even
+        # starts). The heartbeat is still needed on top of it: this is a
+        # single run_baseline() call for the whole model (not per-budget,
+        # so it isn't wrapped by _run_and_log()'s own heartbeat), and a
+        # large model's SCALE-Sim pass can run for minutes with nothing
+        # else printed in between layers -- confirmed directly: DenseNet-121
+        # exceeded a 100s test run here without reaching the first
+        # per-budget log line.
+        heartbeat_stop = _start_heartbeat(model_input, budget_kb='baseline (all budgets)')
+        try:
+            layer_stats = baseline.run_baseline(model_json_path, config_path, verbose=True)
+        finally:
+            heartbeat_stop.set()
     except Exception as e:  # noqa: BLE001
         rows.extend(_error_row(model_input, b, e) for b in runnable_budgets)
         return rows, False

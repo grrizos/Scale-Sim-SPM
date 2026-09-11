@@ -287,23 +287,32 @@ def compute_true_mpmf_bytes(nodes, tensors, time_limit_sec=None, solver='cbc') -
     "C becomes a full |T|x|A| binary block" jump in solve difficulty as
     full operator rescheduling generally -- see docs/ITERATION_HISTORY.md).
 
-    Returns (bytes, schedule). Raises RuntimeError on a non-Optimal status,
-    same pattern as run_cosma.py's main-pipeline solve.
+    Returns (bytes, schedule). Raises RuntimeError on a non-Optimal status
+    with no feasible incumbent to fall back on, same pattern as
+    run_cosma.py's main-pipeline solve. If solver='gurobi' stopped short
+    of proving optimality (time limit, or interrupted mid-solve e.g. via
+    Ctrl+C) but still has a feasible incumbent in hand, that incumbent is
+    accepted instead of raising -- see solve()'s has_feasible_incumbent
+    docstring for why this is safe (PuLP has already copied the
+    incumbent's values into every variable before this function ever
+    sees them).
 
     time_limit_sec: None (default) means unbounded. If you do pass a limit
-    and get back a non-Optimal status (including 'Infeasible'), don't
-    trust it as a proof: CBC/PuLP's status reporting under a time limit is
-    not reliable, and a solve that merely ran out of time can come back
-    labeled 'Infeasible' rather than 'Not Solved'. Confirmed directly on a
-    real model (_exported/fake2/) -- reported 'Infeasible' at the default
-    120s CLI limit despite the graph's own execution order being a
-    hand-verified, zero-constraint-violation feasible solution to this
-    exact model. See visualize_spm.py's solve_ilp_only() docstring for the
-    same caveat on the fixed-schedule solve.
+    and get back a non-Optimal status (including 'Infeasible') with
+    solver='cbc', don't trust it as a proof: CBC/PuLP's status reporting
+    under a time limit is not reliable, and a solve that merely ran out of
+    time can come back labeled 'Infeasible' rather than 'Not Solved'.
+    Confirmed directly on a real model (_exported/fake2/) -- reported
+    'Infeasible' at the default 120s CLI limit despite the graph's own
+    execution order being a hand-verified, zero-constraint-violation
+    feasible solution to this exact model. See visualize_spm.py's
+    solve_ilp_only() docstring for the same caveat on the fixed-schedule
+    solve.
     """
     prob, variables, T, A = build_mpmf_schedule_model(nodes, tensors)
-    status = solve(prob, time_limit_sec=time_limit_sec, solver=solver)
-    if status != 'Optimal':
+    status, has_feasible_incumbent = solve(
+        prob, time_limit_sec=time_limit_sec, solver=solver)
+    if status != 'Optimal' and not has_feasible_incumbent:
         # The CBC/PuLP mislabeling risk below is specific to CBC's own
         # status parsing -- Gurobi's status codes reliably distinguish
         # "time limit reached" from "proven infeasible", so this caveat
@@ -318,6 +327,10 @@ def compute_true_mpmf_bytes(nodes, tensors, time_limit_sec=None, solver='cbc') -
         )
         raise RuntimeError(f"MPMF schedule ILP did not solve to optimality: "
                             f"status={status}{caveat}")
+    if status != 'Optimal':
+        print(f"WARNING: MPMF schedule ILP did not prove optimality "
+              f"(status={status}) -- accepting Gurobi's best incumbent found "
+              f"so far instead of a proven-optimal solution.")
     result = extract_mpmf_schedule_results(variables, T, A)
     return result['mpmf_bytes'], result['schedule']
 
@@ -620,6 +633,35 @@ def solve(prob, time_limit_sec=None, msg=False, solver='cbc'):
         back to CBC (a silent fallback would hide exactly the solver
         identity this project has been careful to always disclose
         alongside every solve-time number).
+
+    Returns (status, has_feasible_incumbent).
+
+    status is PuLP's own solve-outcome string (pulp.LpStatus[prob.status]
+    -- 'Optimal', 'Infeasible', 'Not Solved', 'Unbounded', or 'Undefined').
+
+    has_feasible_incumbent is True only when solver='gurobi', status is
+    NOT 'Optimal', and Gurobi still has at least one integer-feasible
+    solution in hand (model.SolCount >= 1) -- i.e. the solve was cut off
+    by a time limit OR interrupted (gurobipy's optimize() traps SIGINT
+    itself and returns normally with model.Status == GRB.INTERRUPTED
+    instead of raising KeyboardInterrupt, so Ctrl+C during a long solve
+    lands here too) but Gurobi still found a usable answer before
+    stopping. PuLP's own GUROBI binding collapses GRB.TIME_LIMIT,
+    GRB.INTERRUPTED, GRB.ITERATION_LIMIT, etc. all down into the single
+    status string 'Not Solved' (see pulp/apis/gurobi_api.py's
+    gurobiLpStatus map) -- the status string alone can't distinguish
+    "stopped early but has a decent answer" from "found nothing at all",
+    which is what this second return value is for. Always False for
+    solver='cbc' (PuLP's CBC binding exposes no comparable
+    feasible-incumbent-under-timeout signal).
+
+    When has_feasible_incumbent is True, PuLP has ALREADY copied the
+    incumbent's values into every variable's .varValue -- it does this
+    itself, inside its own findSolutionValues(), whenever
+    model.SolCount >= 1, regardless of status -- so extract_results() /
+    pulp.value(x) downstream need no extra plumbing to see that solution.
+    It is simply not proven optimal: callers accepting it should log that
+    clearly and never treat it as equivalent to a real 'Optimal'.
     """
     if solver == 'gurobi':
         pulp_solver = pulp.GUROBI(msg=msg, timeLimit=time_limit_sec)
@@ -628,7 +670,12 @@ def solve(prob, time_limit_sec=None, msg=False, solver='cbc'):
     else:
         raise ValueError(f"Unknown solver {solver!r} -- expected 'cbc' or 'gurobi'")
     prob.solve(pulp_solver)
-    return pulp.LpStatus[prob.status]
+    status = pulp.LpStatus[prob.status]
+    has_feasible_incumbent = (
+        solver == 'gurobi' and status != 'Optimal'
+        and getattr(prob.solverModel, 'SolCount', 0) >= 1
+    )
+    return status, has_feasible_incumbent
 
 
 def extract_results(variables, T, A, tensors):
