@@ -36,6 +36,9 @@ import argparse
 import csv
 import functools
 import os
+import sys
+import threading
+import time
 
 from helpers import graph_builder
 from helpers import baseline
@@ -57,6 +60,32 @@ POLICY_FNS = {
     'belady': belady_policy.choose_victims,
     'ilp_greedy': ilp_greedy_policy.choose_victims,
 }
+
+_HEARTBEAT_INTERVAL_SEC = 20
+
+
+def _start_heartbeat(label: str) -> threading.Event:
+    """
+    Prints a short "still running" line to stderr every
+    _HEARTBEAT_INTERVAL_SEC seconds for as long as the returned Event
+    stays unset -- same liveness-signal pattern as
+    run_experiments.py's own _start_heartbeat(), duplicated (not
+    imported) rather than shared, matching this file's own "fully
+    separate, additive file" isolation rationale (see module docstring).
+    Caller must call .set() on the returned Event once the covered step
+    finishes.
+    """
+    stop = threading.Event()
+    start = time.monotonic()
+
+    def _beat():
+        while not stop.wait(_HEARTBEAT_INTERVAL_SEC):
+            elapsed = time.monotonic() - start
+            print(f"[heartbeat] still running: {label} elapsed={elapsed:.0f}s",
+                  file=sys.stderr)
+
+    threading.Thread(target=_beat, daemon=True).start()
+    return stop
 
 
 def _default_bandwidth_words_per_cycle(config_path: str) -> float:
@@ -204,7 +233,7 @@ def run_paper_baseline(nodes, tensors, model_json_path: str, config_path: str,
     plan_stats = baseline.run_cosma_aware(
         model_json_path, config_path, resident_action, spm_plan=spm_plan,
         tensors=tensors, memory_budget_bytes=memory_budget_bytes,
-        schedule=schedule, verbose=False)
+        schedule=schedule, verbose=verbose)
 
     accounting = _account(nodes, tensors, resident_action, schedule,
                            layer_stats, plan_stats, bandwidth_bytes_per_cycle)
@@ -261,13 +290,32 @@ def run_all_paper_baselines(model_json_path: str, config_path: str = DEFAULT_CON
 
     if verbose:
         print(f"Running SCALE-Sim baseline for {model_json_path} ...")
-    layer_stats = baseline.run_baseline(model_json_path, config_path)
+    # verbose=verbose enables SCALE-Sim's own per-layer tqdm progress (see
+    # run_cosma.py's identical wiring) -- otherwise a large model's
+    # baseline pass produces zero output until it finishes. The heartbeat
+    # underneath is still needed: this is a single call for the whole
+    # model (not per-combination), so it isn't covered by any
+    # per-combination signal below.
+    heartbeat_stop = _start_heartbeat(f"SCALE-Sim baseline for {model_json_path}")
+    try:
+        layer_stats = baseline.run_baseline(model_json_path, config_path, verbose=verbose)
+    finally:
+        heartbeat_stop.set()
 
     default_sched = schedule_variants.default_operator_schedule(nodes)
     if verbose:
         print("Solving MPMF schedule ILP (cosma_Ilp.compute_true_mpmf_bytes) ...")
-    _, mpmf_tensor_sched = cosma_Ilp.compute_true_mpmf_bytes(
-        nodes, tensors, time_limit_sec=mpmf_time_limit_sec, solver=solver)
+    # msg=verbose surfaces Gurobi/CBC's own native solve log -- this is a
+    # real, potentially slow ILP solve (see compute_true_mpmf_bytes()'s
+    # own docstring), untested at DenseNet-121/ImageNet scale through
+    # this file before, so a heartbeat covers it too in case the solver
+    # itself goes quiet for a while (e.g. during presolve).
+    heartbeat_stop = _start_heartbeat("MPMF schedule ILP solve")
+    try:
+        _, mpmf_tensor_sched = cosma_Ilp.compute_true_mpmf_bytes(
+            nodes, tensors, time_limit_sec=mpmf_time_limit_sec, solver=solver, msg=verbose)
+    finally:
+        heartbeat_stop.set()
     mpmf_sched = schedule_variants.mpmf_operator_schedule(nodes, tensors, mpmf_tensor_sched)
 
     schedules = {'default': default_sched, 'mpmf': mpmf_sched}
@@ -277,6 +325,11 @@ def run_all_paper_baselines(model_json_path: str, config_path: str = DEFAULT_CON
             combo = f"{sched_name}+{policy_name}"
             if verbose:
                 print(f"\n=== {combo} ===")
+            # Covers both the per-decision ILP-greedy replacement loop
+            # (many small solves, each up to ilp_greedy_time_limit_sec)
+            # and the real SCALE-Sim run_cosma_aware() pass below it --
+            # either can run long with nothing else printed in between.
+            heartbeat_stop = _start_heartbeat(f"{combo} @ {memory_budget_bytes} bytes")
             try:
                 results[combo] = run_paper_baseline(
                     nodes, tensors, model_json_path, config_path, sched,
@@ -289,16 +342,19 @@ def run_all_paper_baselines(model_json_path: str, config_path: str = DEFAULT_CON
                 results[combo] = {'status': 'ERROR', 'error': f"{type(e).__name__}: {e}"}
                 if verbose:
                     print(f"  FAILED: {type(e).__name__}: {e}")
+            finally:
+                heartbeat_stop.set()
 
     if include_cosma_native:
         if verbose:
             print("\n=== cosma_native ===")
+        heartbeat_stop = _start_heartbeat(f"cosma_native @ {memory_budget_bytes} bytes")
         try:
             results['cosma_native'] = run_cosma.run_cosma(
                 model_json_path=model_json_path, config_path=config_path,
                 memory_budget_bytes=memory_budget_bytes, layer_stats=layer_stats,
                 bandwidth_bytes_per_cycle=bandwidth_bytes_per_cycle,
-                verbose=False, save_plot=False, solver=solver)
+                verbose=verbose, save_plot=False, solver=solver)
             if verbose:
                 r = results['cosma_native']
                 print(f"  non-compulsory bytes: {r['total_non_compulsory_access_bytes']}, "
@@ -308,6 +364,8 @@ def run_all_paper_baselines(model_json_path: str, config_path: str = DEFAULT_CON
             results['cosma_native'] = {'status': 'ERROR', 'error': f"{type(e).__name__}: {e}"}
             if verbose:
                 print(f"  FAILED: {type(e).__name__}: {e}")
+        finally:
+            heartbeat_stop.set()
 
     return results
 
@@ -345,9 +403,13 @@ if __name__ == '__main__':
     parser.add_argument('--exporter', default=model_resolver.DEFAULT_EXPORTER)
     parser.add_argument('--export-dir', default=model_resolver.DEFAULT_EXPORT_DIR)
     parser.add_argument('--force-export', action='store_true')
-    parser.add_argument('--time-limit', type=float, default=None,
+    parser.add_argument('--time-limit', type=float, default=1500,
                          help='Time limit (seconds) for the MPMF schedule ILP solve. '
-                              'Default: unbounded.')
+                              'Default: 1500s -- with solver=gurobi (the default), a solve '
+                              'that hits this limit still returns its best feasible '
+                              'incumbent instead of failing (see cosma_Ilp.solve()\'s '
+                              'has_feasible_incumbent docstring). Pass a larger value, or '
+                              'edit this default back to None, for unbounded.')
     parser.add_argument('--ilp-greedy-time-limit', type=float, default=10,
                          help='Per-decision-point time limit (seconds) for the local '
                               'ILP-greedy replacement policy solve. Default: 10.')

@@ -277,7 +277,8 @@ def extract_mpmf_schedule_results(variables, T, A) -> dict:
     return {'mpmf_bytes': val(M_peak), 'schedule': schedule}
 
 
-def compute_true_mpmf_bytes(nodes, tensors, time_limit_sec=None, solver='cbc') -> Tuple[int, dict]:
+def compute_true_mpmf_bytes(nodes, tensors, time_limit_sec=None, solver='cbc',
+                             msg=False) -> Tuple[int, dict]:
     """
     The paper's real M_P (not compute_mpmf_bytes()'s fixed-schedule proxy):
     build_mpmf_schedule_model() + solve() + extract_mpmf_schedule_results()
@@ -286,6 +287,11 @@ def compute_true_mpmf_bytes(nodes, tensors, time_limit_sec=None, solver='cbc') -
     for a real ILP solve -- not instant, can be slow on a large model (same
     "C becomes a full |T|x|A| binary block" jump in solve difficulty as
     full operator rescheduling generally -- see docs/ITERATION_HISTORY.md).
+
+    msg: forwarded to solve() -- set True to see the solver's own native
+    progress log (Gurobi's periodic explored-nodes/incumbent/gap/time
+    lines, or CBC's console output) while this potentially slow solve is
+    running, instead of no output at all until it finishes.
 
     Returns (bytes, schedule). Raises RuntimeError on a non-Optimal status
     with no feasible incumbent to fall back on, same pattern as
@@ -311,7 +317,7 @@ def compute_true_mpmf_bytes(nodes, tensors, time_limit_sec=None, solver='cbc') -
     """
     prob, variables, T, A = build_mpmf_schedule_model(nodes, tensors)
     status, has_feasible_incumbent = solve(
-        prob, time_limit_sec=time_limit_sec, solver=solver)
+        prob, time_limit_sec=time_limit_sec, solver=solver, msg=msg)
     if status != 'Optimal' and not has_feasible_incumbent:
         # The CBC/PuLP mislabeling risk below is specific to CBC's own
         # status parsing -- Gurobi's status codes reliably distinguish
