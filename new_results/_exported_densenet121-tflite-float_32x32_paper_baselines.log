@@ -1,0 +1,1080 @@
+Running SCALE-Sim baseline for /data/grizos/Scale-Sim-SPM/cosma/_exported/_exported_densenet121-tflite-float/model.json ...
+Solving MPMF schedule ILP (cosma_Ilp.compute_true_mpmf_bytes) ...
+Set parameter WLSAccessID
+Set parameter WLSSecret
+Set parameter LicenseID to value 2862201
+Academic license 2862201 - for non-commercial use only - registered to ge___@gmail.com
+Set parameter TimeLimit to value 1500
+Gurobi Optimizer version 11.0.3 build v11.0.3rc0 (linux64 - "Ubuntu 20.04.6 LTS")
+
+CPU model: INTEL(R) XEON(R) SILVER 4510, instruction set [SSE2|AVX|AVX2|AVX512]
+Thread count: 24 physical cores, 48 logical processors, using up to 24 threads
+
+Academic license 2862201 - for non-commercial use only - registered to ge___@gmail.com
+Optimize a model with 459576 rows, 194689 columns and 1403688 nonzeros
+Model fingerprint: 0x75420d61
+Variable types: 0 continuous, 194689 integer (0 binary)
+Coefficient statistics:
+  Matrix range     [1e+00, 3e+06]
+  Objective range  [1e+00, 1e+00]
+  Bounds range     [1e+00, 2e+08]
+  RHS range        [1e+00, 1e+00]
+Presolve removed 95194 rows and 22422 columns (presolve time = 5s) ...
+Presolve removed 135577 rows and 40593 columns (presolve time = 10s) ...
+Presolve removed 174757 rows and 55814 columns
+Presolve time: 14.40s
+Presolved: 284819 rows, 138875 columns, 948631 nonzeros
+Variable types: 0 continuous, 138875 integer (138874 binary)
+Found heuristic solution: objective 8429568.0000
+
+Explored 0 nodes (0 simplex iterations) in 14.76 seconds (24.68 work units)
+Thread count was 24 (of 48 available processors)
+
+Solution count 1: 8.42957e+06 
+
+Optimal solution found (tolerance 1.00e-04)
+Best objective 8.429568000000e+06, best bound 8.429568000000e+06, gap 0.0000%
+Gurobi status= 2
+
+=== default+belady ===
+[replacement_engine] 312 timesteps, 5 spills, 2809856 bytes spilled, 0 infeasibilities
+  FAILED: TfliteArenaAllocationError: place_tensors_linear(): tensor 62's episode [29,35] needs 401408 bytes but no gap fits in the 6481920-byte budget against time-overlapping placed episodes [(0, 2809856), (0, 2809856), (0, 3211264), (2408448, 1605632), (2809856, 802816), (2809856, 1605632), (2809856, 2809856), (3211264, 802816), (4816896, 401408), (5218304, 401408), (5619712, 401408), (6021120, 401408)] -- a real TFLite-linear-allocator capacity/fragmentation failure, not necessarily a bug (general dynamic storage allocation is NP-hard; see this module's docstring). COSMA's own joint placement+replacement ILP can succeed here even when this heuristic can't -- that gap is exactly what the paper's comparison measures.
+
+=== default+ilp_greedy ===
+Set parameter TimeLimit to value 10
+Gurobi Optimizer version 11.0.3 build v11.0.3rc0 (linux64 - "Ubuntu 20.04.6 LTS")
+
+CPU model: INTEL(R) XEON(R) SILVER 4510, instruction set [SSE2|AVX|AVX2|AVX512]
+Thread count: 24 physical cores, 48 logical processors, using up to 24 threads
+
+Academic license 2862201 - for non-commercial use only - registered to ge___@gmail.com
+Optimize a model with 1 rows, 5 columns and 5 nonzeros
+Model fingerprint: 0x1e36f603
+Variable types: 0 continuous, 5 integer (0 binary)
+Coefficient statistics:
+  Matrix range     [4e+05, 8e+05]
+  Objective range  [4e+05, 8e+05]
+  Bounds range     [1e+00, 1e+00]
+  RHS range        [7e+05, 7e+05]
+Found heuristic solution: objective 802816.00000
+Presolve removed 1 rows and 5 columns
+Presolve time: 0.00s
+Presolve: All rows and columns removed
+
+Explored 0 nodes (0 simplex iterations) in 0.00 seconds (0.00 work units)
+Thread count was 1 (of 48 available processors)
+
+Solution count 1: 802816 
+
+Optimal solution found (tolerance 1.00e-04)
+Best objective 8.028160000000e+05, best bound 8.028160000000e+05, gap 0.0000%
+Gurobi status= 2
+Set parameter TimeLimit to value 10
+Gurobi Optimizer version 11.0.3 build v11.0.3rc0 (linux64 - "Ubuntu 20.04.6 LTS")
+
+CPU model: INTEL(R) XEON(R) SILVER 4510, instruction set [SSE2|AVX|AVX2|AVX512]
+Thread count: 24 physical cores, 48 logical processors, using up to 24 threads
+
+Academic license 2862201 - for non-commercial use only - registered to ge___@gmail.com
+Optimize a model with 1 rows, 6 columns and 6 nonzeros
+Model fingerprint: 0x6363ea4a
+Variable types: 0 continuous, 6 integer (0 binary)
+Coefficient statistics:
+  Matrix range     [4e+05, 8e+05]
+  Objective range  [4e+05, 8e+05]
+  Bounds range     [1e+00, 1e+00]
+  RHS range        [2e+06, 2e+06]
+Found heuristic solution: objective 2007040.0000
+Presolve removed 1 rows and 6 columns
+Presolve time: 0.00s
+Presolve: All rows and columns removed
+
+Explored 0 nodes (0 simplex iterations) in 0.00 seconds (0.00 work units)
+Thread count was 1 (of 48 available processors)
+
+Solution count 1: 2.00704e+06 
+
+Optimal solution found (tolerance 1.00e-04)
+Best objective 2.007040000000e+06, best bound 2.007040000000e+06, gap 0.0000%
+Gurobi status= 2
+[replacement_engine] 312 timesteps, 7 spills, 2809856 bytes spilled, 0 infeasibilities
+[COSMA SPM] verified 312 timesteps, peak occupancy 6480128/6481920 bytes, 0 violations
+  non-compulsory bytes: 5619712, DRAM reduction: 88.8%, speedup: 1.0221x
+  saved plot to /data/grizos/Scale-Sim-SPM/cosma/spm_plots/_exported_densenet121-tflite-float_32x32_6330kb_default+ilp_greedy.png
+
+=== mpmf+belady ===
+[replacement_engine] 312 timesteps, 5 spills, 2809856 bytes spilled, 0 infeasibilities
+  FAILED: TfliteArenaAllocationError: place_tensors_linear(): tensor 62's episode [29,35] needs 401408 bytes but no gap fits in the 6481920-byte budget against time-overlapping placed episodes [(0, 2809856), (0, 2809856), (0, 3211264), (2408448, 1605632), (2809856, 802816), (2809856, 1605632), (2809856, 2809856), (3211264, 802816), (4816896, 401408), (5218304, 401408), (5619712, 401408), (6021120, 401408)] -- a real TFLite-linear-allocator capacity/fragmentation failure, not necessarily a bug (general dynamic storage allocation is NP-hard; see this module's docstring). COSMA's own joint placement+replacement ILP can succeed here even when this heuristic can't -- that gap is exactly what the paper's comparison measures.
+
+=== mpmf+ilp_greedy ===
+Set parameter TimeLimit to value 10
+Gurobi Optimizer version 11.0.3 build v11.0.3rc0 (linux64 - "Ubuntu 20.04.6 LTS")
+
+CPU model: INTEL(R) XEON(R) SILVER 4510, instruction set [SSE2|AVX|AVX2|AVX512]
+Thread count: 24 physical cores, 48 logical processors, using up to 24 threads
+
+Academic license 2862201 - for non-commercial use only - registered to ge___@gmail.com
+Optimize a model with 1 rows, 5 columns and 5 nonzeros
+Model fingerprint: 0x1e36f603
+Variable types: 0 continuous, 5 integer (0 binary)
+Coefficient statistics:
+  Matrix range     [4e+05, 8e+05]
+  Objective range  [4e+05, 8e+05]
+  Bounds range     [1e+00, 1e+00]
+  RHS range        [7e+05, 7e+05]
+Found heuristic solution: objective 802816.00000
+Presolve removed 1 rows and 5 columns
+Presolve time: 0.00s
+Presolve: All rows and columns removed
+
+Explored 0 nodes (0 simplex iterations) in 0.00 seconds (0.00 work units)
+Thread count was 1 (of 48 available processors)
+
+Solution count 1: 802816 
+
+Optimal solution found (tolerance 1.00e-04)
+Best objective 8.028160000000e+05, best bound 8.028160000000e+05, gap 0.0000%
+Gurobi status= 2
+Set parameter TimeLimit to value 10
+Gurobi Optimizer version 11.0.3 build v11.0.3rc0 (linux64 - "Ubuntu 20.04.6 LTS")
+
+CPU model: INTEL(R) XEON(R) SILVER 4510, instruction set [SSE2|AVX|AVX2|AVX512]
+Thread count: 24 physical cores, 48 logical processors, using up to 24 threads
+
+Academic license 2862201 - for non-commercial use only - registered to ge___@gmail.com
+Optimize a model with 1 rows, 6 columns and 6 nonzeros
+Model fingerprint: 0x6363ea4a
+Variable types: 0 continuous, 6 integer (0 binary)
+Coefficient statistics:
+  Matrix range     [4e+05, 8e+05]
+  Objective range  [4e+05, 8e+05]
+  Bounds range     [1e+00, 1e+00]
+  RHS range        [2e+06, 2e+06]
+Found heuristic solution: objective 2007040.0000
+Presolve removed 1 rows and 6 columns
+Presolve time: 0.00s
+Presolve: All rows and columns removed
+
+Explored 0 nodes (0 simplex iterations) in 0.00 seconds (0.00 work units)
+Thread count was 1 (of 48 available processors)
+
+Solution count 1: 2.00704e+06 
+
+Optimal solution found (tolerance 1.00e-04)
+Best objective 2.007040000000e+06, best bound 2.007040000000e+06, gap 0.0000%
+Gurobi status= 2
+[replacement_engine] 312 timesteps, 7 spills, 2809856 bytes spilled, 0 infeasibilities
+[COSMA SPM] verified 312 timesteps, peak occupancy 6480128/6481920 bytes, 0 violations
+  non-compulsory bytes: 5619712, DRAM reduction: 88.8%, speedup: 1.0221x
+  saved plot to /data/grizos/Scale-Sim-SPM/cosma/spm_plots/_exported_densenet121-tflite-float_32x32_6330kb_mpmf+ilp_greedy.png
+
+=== cosma_native ===
+Set parameter TimeLimit to value 1500
+Gurobi Optimizer version 11.0.3 build v11.0.3rc0 (linux64 - "Ubuntu 20.04.6 LTS")
+
+CPU model: INTEL(R) XEON(R) SILVER 4510, instruction set [SSE2|AVX|AVX2|AVX512]
+Thread count: 24 physical cores, 48 logical processors, using up to 24 threads
+
+Academic license 2862201 - for non-commercial use only - registered to ge___@gmail.com
+Optimize a model with 1439802 rows, 768306 columns and 19735266 nonzeros
+Model fingerprint: 0x4136efec
+Variable types: 0 continuous, 768306 integer (0 binary)
+Coefficient statistics:
+  Matrix range     [1e+00, 6e+06]
+  Objective range  [4e+03, 3e+06]
+  Bounds range     [1e+00, 6e+06]
+  RHS range        [1e+00, 1e+07]
+Presolve removed 347258 rows and 148032 columns (presolve time = 6s) ...
+Presolve removed 361435 rows and 194181 columns (presolve time = 10s) ...
+Presolve removed 361463 rows and 194498 columns (presolve time = 15s) ...
+Presolve removed 452841 rows and 197488 columns (presolve time = 20s) ...
+Presolve removed 597410 rows and 387096 columns (presolve time = 25s) ...
+Presolve removed 605852 rows and 404192 columns (presolve time = 30s) ...
+Presolve removed 767795 rows and 411113 columns (presolve time = 35s) ...
+Presolve removed 782439 rows and 418818 columns (presolve time = 40s) ...
+Presolve removed 785557 rows and 420896 columns (presolve time = 45s) ...
+Presolve removed 799354 rows and 427696 columns (presolve time = 50s) ...
+Presolve removed 813320 rows and 435168 columns (presolve time = 55s) ...
+Presolve removed 822446 rows and 440498 columns (presolve time = 60s) ...
+Presolve removed 828584 rows and 445153 columns (presolve time = 65s) ...
+Presolve removed 843479 rows and 451846 columns (presolve time = 70s) ...
+Presolve removed 857330 rows and 459066 columns (presolve time = 75s) ...
+Presolve removed 867767 rows and 464265 columns (presolve time = 80s) ...
+Presolve removed 876986 rows and 469870 columns (presolve time = 85s) ...
+Presolve removed 889606 rows and 476575 columns (presolve time = 90s) ...
+Presolve removed 901738 rows and 482920 columns (presolve time = 95s) ...
+Presolve removed 913684 rows and 489937 columns (presolve time = 100s) ...
+Presolve removed 922959 rows and 496150 columns (presolve time = 105s) ...
+Presolve removed 938298 rows and 503452 columns (presolve time = 110s) ...
+Presolve removed 948200 rows and 510333 columns (presolve time = 115s) ...
+Presolve removed 978299 rows and 529636 columns (presolve time = 120s) ...
+Presolve removed 1035659 rows and 557818 columns (presolve time = 125s) ...
+Presolve removed 1101306 rows and 593066 columns (presolve time = 130s) ...
+Presolve removed 1171048 rows and 627399 columns
+Presolve time: 134.34s
+Presolved: 268754 rows, 140907 columns, 1683365 nonzeros
+Variable types: 0 continuous, 140907 integer (124086 binary)
+Found heuristic solution: objective 4.166490e+07
+
+Deterministic concurrent LP optimizer: primal and dual simplex (primal and dual model)
+Showing primal log only...
+
+Root relaxation presolved: 91148 rows, 54260 columns, 370435 nonzeros
+
+
+Root simplex log...
+
+Iteration    Objective       Primal Inf.    Dual Inf.      Time
+       0    3.6503928e+07   2.010970e+05   3.374571e+08    149s
+Concurrent spin time: 0.00s
+
+Solved with primal simplex
+
+Root relaxation: objective 0.000000e+00, 41938 iterations, 0.69 seconds (0.50 work units)
+Total elapsed time = 149.36s (DegenMoves)
+Total elapsed time = 150.87s (DegenMoves)
+
+    Nodes    |    Current Node    |     Objective Bounds      |     Work
+ Expl Unexpl |  Obj  Depth IntInf | Incumbent    BestBd   Gap | It/Node Time
+
+     0     0    0.00000    0 27122 4.1665e+07    0.00000   100%     -  153s
+     0     0    0.00000    0 21097 4.1665e+07    0.00000   100%     -  167s
+     0     0    0.00000    0 18052 4.1665e+07    0.00000   100%     -  174s
+     0     0    0.00000    0 17227 4.1665e+07    0.00000   100%     -  187s
+     0     0    0.00000    0 17912 4.1665e+07    0.00000   100%     -  191s
+     0     0    0.00000    0 17260 4.1665e+07    0.00000   100%     -  202s
+     0     0    0.00000    0 16973 4.1665e+07    0.00000   100%     -  209s
+     0     0    0.00000    0 16741 4.1665e+07    0.00000   100%     -  219s
+H    0     0                    4.156454e+07    0.00000   100%     -  220s
+     0     0    0.00000    0 16504 4.1565e+07    0.00000   100%     -  220s
+     0     0    0.00000    0 17826 4.1565e+07    0.00000   100%     -  230s
+H    0     0                    4.153946e+07    0.00000   100%     -  231s
+     0     0    0.00000    0 18752 4.1539e+07    0.00000   100%     -  231s
+     0     0    0.00000    0 18396 4.1539e+07    0.00000   100%     -  242s
+     0     0    0.00000    0 17763 4.1539e+07    0.00000   100%     -  243s
+     0     0    0.00000    0 17895 4.1539e+07    0.00000   100%     -  253s
+     0     0    0.00000    0 17882 4.1539e+07    0.00000   100%     -  262s
+H    0     0                    2.029619e+07    0.00000   100%     -  269s
+     0     2    0.00000    0 17882 2.0296e+07    0.00000   100%     -  292s
+    15    32 1605632.00    4 17800 2.0296e+07    0.00000   100%  8806  295s
+    31    56 1605632.00    5 17793 2.0296e+07    0.00000   100%  6625  301s
+H   39    56                    2.019584e+07    0.00000   100%  5475  301s
+    55    80 1605632.00    6 17647 2.0196e+07    0.00000   100%  4551  308s
+   103   128 1605632.00    8 17422 2.0196e+07    0.00000   100%  3640  316s
+H  104   128                    2.014566e+07    0.00000   100%  3605  316s
+H  105   128                    1.939302e+07    0.00000   100%  3572  316s
+H  115   128                    1.938675e+07    0.00000   100%  3272  316s
+H  118   128                    1.288896e+07    0.00000   100%  3188  316s
+H  165   189                    9552256.0000    0.00000   100%  2462  374s
+H  168   189                    9169664.0000    0.00000   100%  2418  374s
+H  172   189                    7890176.0000    0.00000   100%  2363  374s
+   189   236 1605632.00   12 17041 7890176.00    0.00000   100%  2202  375s
+H  236   260                    6805120.0000    0.00000   100%  1918  416s
+H  237   260                    6554240.0000    0.00000   100%  1910  416s
+H  247   260                    6077568.0000    0.00000   100%  1863  416s
+   375   428 1615727.98   18 17549 6077568.00    0.00000   100%  1523  421s
+   646   855 2408448.00   29 17422 6077568.00    0.00000   100%  1132  426s
+   936  1057 3612672.00   43 17355 6077568.00    0.00000   100%   899  430s
+  1659  1590 5218304.00   71 17453 6077568.00    0.00000   100%   615  436s
+  1896  1926 5218304.00   78 17446 6077568.00    0.00000   100%   599  442s
+  2299  2255 5218304.00   91 17425 6077568.00    0.00000   100%   532  446s
+  3069  2823    0.00000   14 17695 6077568.00    0.00000   100%   453  452s
+  3489  3161 2408448.00   29 17588 6077568.00    0.00000   100%   422  455s
+H 3886  2679                    5092864.0000    0.00000   100%   401  471s
+  3889  2633 2626876.10   36 31983 5092864.00    0.00000   100%   400  483s
+  3890  2634 4024670.07   42 25065 5092864.00    0.00000   100%   400  567s
+  3891  2635    0.00000    9 22404 5092864.00    0.00000   100%   400  571s
+  3892  2635 4435834.10   25 22509 5092864.00    0.00000   100%   400  609s
+  3893  2636 4816896.00  101 20582 5092864.00    0.00000   100%   400  645s
+  3894  2637 1777763.27   24 19382 5092864.00    0.00000   100%   400  671s
+  3896  2638 4816896.00   35 17401 5092864.00    0.00000   100%   400  701s
+  3897  2639 1607185.63   14 17223 5092864.00    0.00000   100%   399  707s
+  3898  2639 4037738.37   47 16461 5092864.00    0.00000   100%   399  726s
+  3899  2640 4014080.00   64 15945 5092864.00    0.00000   100%   399  731s
+  3900  2641 1605632.00    7 10828 5092864.00    0.00000   100%   399  757s
+  3901  2641 3382627.16   41 11328 5092864.00    0.00000   100%   399  760s
+  3902  2642 3566483.75   66 10723 5092864.00    0.00000   100%   399  768s
+  3903  2643 2835451.16   40 9596 5092864.00    0.00000   100%   399  772s
+  3904  2643 1680526.38   25 4173 5092864.00    0.00000   100%   399  787s
+  3906  2645 845020.205   22 2115 5092864.00    0.00000   100%   399  799s
+  3907  2645 4616192.00   37 2674 5092864.00    0.00000   100%   398  800s
+  3908  2646 1404928.00   21  677 5092864.00    0.00000   100%   398  805s
+H 3909  2514                    4867072.0000    0.00000   100%   398  866s
+  3912  2516 4028200.09   34  538 4867072.00    0.00000   100%   398  870s
+  3914  2517 501760.000   16  465 4867072.00    0.00000   100%   398  876s
+  3916  2518 1605632.00   14  756 4867072.00    0.00000   100%   398  882s
+  3918  2520 2007040.00   31  823 4867072.00    0.00000   100%   397  890s
+H 3919  2393                    4816896.0000    0.00000   100%   397  894s
+  3920  2394 1204224.00   15  823 4816896.00    0.00000   100%   397  895s
+  3935  2421    0.00000   17  923 4816896.00    0.00000   100%   637  900s
+  4023  2484    0.00000   20 1037 4816896.00    0.00000   100%   626  905s
+  4071  2516    0.00000   21  973 4816896.00    0.00000   100%   621  918s
+  4095  2529    0.00000   21 1035 4816896.00    0.00000   100%   618  921s
+  4256  2634 2408448.00   24  884 4816896.00    0.00000   100%   598  925s
+  4322  2658 2408448.00   25  882 4816896.00    0.00000   100%   590  991s
+  4348  2667 2436453.54   25  958 4816896.00    0.00000   100%   587 1012s
+  4425  2705 2910208.00   27  848 4816896.00    0.00000   100%   578 1015s
+  4627  2801 3218324.05   31  874 4816896.00    0.00000   100%   558 1021s
+  4793  2857 4034166.08   35  887 4816896.00    0.00000   100%   543 1025s
+  4988  2905 1003520.00   23  890 4816896.00    0.00000   100%   526 1030s
+  5199  2984 2207744.00   32  817 4816896.00    0.00000   100%   508 1035s
+  5443  3052 4035260.14   41  917 4816896.00    0.00000   100%   490 1041s
+  5611  3084 4544080.18   45  891 4816896.00    0.00000   100%   478 1045s
+  5810  3130 602112.000   25 1447 4816896.00    0.00000   100%   466 1050s
+  5905  3140 831142.700   28 1089 4816896.00    0.00000   100%   460 1059s
+  5995  3111 1605632.00   31 1081 4816896.00    0.00000   100%   454 1072s
+  6037  3171 1605632.00   32 1077 4816896.00    0.00000   100%   452 1075s
+  6254  3252 4021238.56   40  955 4816896.00    0.00000   100%   439 1081s
+  6509  3341 4014080.00   44  916 4816896.00    0.00000   100%   427 1087s
+  6651  3372     cutoff   49      4816896.00    0.00000   100%   420 1090s
+  6935  3401 2408448.00   31  972 4816896.00    0.00000   100%   407 1096s
+  7068  3438 3211264.00   36  877 4816896.00    0.00000   100%   401 1100s
+  7393  3549 3231350.08   41  927 4816896.00    0.00000   100%   388 1107s
+  7552  3519 4625432.70   45  886 4816896.00    0.00000   100%   383 1126s
+  7597  3590 3838176.92   43  938 4816896.00    0.00000   100%   381 1130s
+  8378  4073 1304576.00   25 1079 4816896.00    0.00000   100%   353 1138s
+  8959  4196 4023930.73   46 1099 4816896.00    0.00000   100%   336 1141s
+  9469  4286     cutoff   49      4816896.00 17241.6733   100%   324 1145s
+ 10623  4507 3211264.00   25  795 4816896.00 609270.559  87.4%   299 1153s
+ 11272  4657     cutoff   34      4816896.00 609270.559  87.4%   287 1156s
+ 11918  4987 4616192.00   42 1002 4816896.00 802816.000  83.3%   276 1160s
+ 12552  5350 2207744.00   33  958 4816896.00 802816.000  83.3%   267 1165s
+ 14070  6104 4549290.67   40  808 4816896.00 802816.000  83.3%   249 1173s
+ 14850  6522 3211264.00   29  900 4816896.00 802816.000  83.3%   241 1178s
+ 15547  6805 4014080.00   45  836 4816896.00 802816.000  83.3%   235 1183s
+ 16264  7218 4629429.59   40  901 4816896.00 802816.000  83.3%   229 1187s
+ 16999  7628 2408448.00   28 1014 4816896.00 802816.000  83.3%   223 1192s
+ 17771  7651 infeasible   45      4816896.00 802816.000  83.3%   218 1220s
+ 17803  8047 2368984.87   31  917 4816896.00 802816.000  83.3%   217 1226s
+ 18603  8467 3746474.67   27  966 4816896.00 815503.866  83.1%   213 1231s
+ 19408  8908 3211264.00   26 3092 4816896.00 815503.866  83.1%   208 1236s
+ 20258  9271 4322686.68   40 3135 4816896.00 815503.866  83.1%   204 1242s
+ 21143  9645 infeasible   51      4816896.00 815503.866  83.1%   199 1248s
+ 22022 10083 1640023.63   32 1122 4816896.00 824122.965  82.9%   196 1254s
+ 22881 10601 4549290.67   45  904 4816896.00 828084.761  82.8%   193 1260s
+ 23786 11220     cutoff   53      4816896.00 840072.522  82.6%   190 1267s
+ 24790 11827 4629429.59   48  920 4816896.00 848854.264  82.4%   186 1273s
+ 25857 12613 3211264.00   36  837 4816896.00 858807.689  82.2%   181 1286s
+ 27643 12999 2676053.33   32  906 4816896.00 873413.936  81.9%   175 1292s
+ 28617 13427 4163228.75   43  956 4816896.00 942303.406  80.4%   172 1298s
+ 29651 13837 4295743.99   36 1039 4816896.00 1008149.73  79.1%   170 1305s
+ 30740 14454 infeasible   33      4816896.00 1099659.31  77.2%   168 1312s
+ 31830 15058 4212945.01   40  900 4816896.00 1204224.00  75.0%   165 1319s
+ 33028 15553 4014080.00   33  980 4816896.00 1204224.00  75.0%   163 1326s
+ 34238 16128 4014080.00   31  990 4816896.00 1204224.00  75.0%   160 1334s
+ 35601 16737 3753633.23   37  898 4816896.00 1365067.87  71.7%   158 1342s
+ 37027 17259 4035386.96   38  940 4816896.00 1404928.00  70.8%   155 1350s
+ 38377 17591 4616192.00   38  960 4816896.00 1404928.00  70.8%   153 1359s
+ 39192 18156 1633572.69   40 1044 4816896.00 1417615.87  70.6%   151 1369s
+ 40777 18766 4467998.57   39  882 4816896.00 1418068.22  70.6%   150 1378s
+ 42431 19460 3037300.96   38 1036 4816896.00 1517486.15  68.5%   147 1388s
+ 44100 20398 2616310.56   34 1172 4816896.00 1605632.00  66.7%   145 1401s
+ 46153 20834 2809856.00   33  993 4816896.00 1605632.00  66.7%   142 1418s
+ 47304 22075 3612672.00   35  972 4816896.00 1605632.00  66.7%   141 1433s
+ 49941 23136 4023157.20   40 1036 4816896.00 1605632.00  66.7%   138 1448s
+ 52552 23135 infeasible   38      4816896.00 1605632.00  66.7%   135 1500s
+
+Cutting planes:
+  Learned: 3
+  Gomory: 83
+  Cover: 8
+  Implied bound: 43
+  Flow cover: 713
+  Inf proof: 3
+  RLT: 47
+  Relax-and-lift: 18
+
+Explored 52553 nodes (7820050 simplex iterations) in 1501.84 seconds (1820.30 work units)
+Thread count was 24 (of 48 available processors)
+
+Solution count 10: 4.8169e+06 4.86707e+06 5.09286e+06 ... 7.89018e+06
+
+Time limit reached
+Best objective 4.816896000000e+06, best bound 1.605632000000e+06, gap 66.6667%
+Gurobi status= 9
+WARNING: COSMA ILP did not prove optimality (status=Not Solved) -- accepting Gurobi's best incumbent solution found so far (e.g. from a Ctrl+C interrupt or --time-limit) instead of a proven-optimal one. SPM addresses/schedule below are a feasible, but not provably optimal, plan.
+[COSMA SPM] verified 312 timesteps, peak occupancy 6480128/6481920 bytes, 0 violations
+SPM budget: 6481920 bytes
+ILP status: Not Solved (accepted feasible incumbent, NOT proven optimal)
+--- COSMA's contribution (real, SCALE-Sim-engine-simulated) ---
+Ifmap bytes avoided by keeping activations resident ('P'): 15574923
+Ofmap bytes avoided (a layer's own output never leaves the chip at creation): 88865385
+--- COSMA's overhead to fit the budget (idealized -- no SCALE-Sim analog exists for these) ---
+Idealized spill DRAM bytes (no SCALE-Sim analog): 2007040
+Idealized retrieve DRAM bytes (consumed by a non-conv layer, no SCALE-Sim analog): 2809856
+Real (SCALE-Sim-simulated) retrieve DRAM bytes: 0
+Non-compulsory off-chip access volume (paper's own primary metric, §V-A2 -- spill+retrieve bytes, real or idealized): 4816896
+Baseline DRAM bytes (no unified SPM): 111310516
+COSMA DRAM bytes: 11687104
+DRAM traffic reduction: 89.5%
+Baseline total cycles: 3662446.2
+COSMA total cycles: 3558076.0
+Speedup: 1.0293x
+--- Compute-vs-memory bound breakdown, per layer (max(compute_cycles, dram_bytes/32)) ---
+Baseline: 39/312 layers memory-bound
+COSMA:    4/312 layers memory-bound
+Layers where memory was (or became) the bottleneck -- these are the only ones where COSMA's DRAM reduction can show up as real speedup:
+  t=  3 (layer 3) CONV2D           baseline: compute=126379 mem=130651 [memory]   cosma: compute=126379 mem=294 [compute]
+  t=  8 (layer 8) CONV2D           baseline: compute=25839 mem=31616 [memory]   cosma: compute=25839 mem=256 [compute]
+  t=  9 (layer 9) CONV2D           baseline: compute=116279 mem=127505 [memory]   cosma: compute=116279 mem=1152 [compute]
+  t= 13 (layer 13) CONV2D           baseline: compute=38759 mem=47425 [memory]   cosma: compute=38759 mem=384 [compute]
+  t= 14 (layer 14) CONV2D           baseline: compute=116279 mem=127505 [memory]   cosma: compute=116279 mem=1152 [compute]
+  t= 18 (layer 18) CONV2D           baseline: compute=51679 mem=63233 [memory]   cosma: compute=51679 mem=512 [compute]
+  t= 19 (layer 19) CONV2D           baseline: compute=116279 mem=127505 [memory]   cosma: compute=116279 mem=1152 [compute]
+  t= 23 (layer 23) CONV2D           baseline: compute=64599 mem=79041 [memory]   cosma: compute=64599 mem=640 [compute]
+  t= 24 (layer 24) CONV2D           baseline: compute=116279 mem=127505 [memory]   cosma: compute=116279 mem=1152 [compute]
+  t= 26 (layer 26) MUL              baseline: compute=0 mem=0 [compute]   cosma: compute=0 mem=25088 [memory]
+  t= 28 (layer 28) CONV2D           baseline: compute=77519 mem=94849 [memory]   cosma: compute=77519 mem=768 [compute]
+  t= 29 (layer 29) CONV2D           baseline: compute=116279 mem=127505 [memory]   cosma: compute=116279 mem=1152 [compute]
+  t= 30 (layer 30) CONCAT           baseline: compute=0 mem=0 [compute]   cosma: compute=0 mem=25088 [memory]
+  t= 31 (layer 31) MUL              baseline: compute=0 mem=0 [compute]   cosma: compute=0 mem=37632 [memory]
+  t= 33 (layer 33) CONV2D           baseline: compute=90439 mem=110657 [memory]   cosma: compute=90439 mem=896 [compute]
+  t= 34 (layer 34) CONV2D           baseline: compute=116279 mem=127505 [memory]   cosma: compute=116279 mem=1152 [compute]
+  t= 35 (layer 35) CONCAT           baseline: compute=0 mem=0 [compute]   cosma: compute=0 mem=62720 [memory]
+  t= 38 (layer 38) CONV2D           baseline: compute=103359 mem=126465 [memory]   cosma: compute=103359 mem=1024 [compute]
+  t= 42 (layer 42) CONV2D           baseline: compute=14047 mem=16193 [memory]   cosma: compute=14047 mem=512 [compute]
+  t= 43 (layer 43) CONV2D           baseline: compute=31607 mem=32977 [memory]   cosma: compute=31607 mem=1152 [compute]
+  t= 47 (layer 47) CONV2D           baseline: compute=17559 mem=20241 [memory]   cosma: compute=17559 mem=640 [compute]
+  t= 48 (layer 48) CONV2D           baseline: compute=31607 mem=32977 [memory]   cosma: compute=31607 mem=1152 [compute]
+  t= 52 (layer 52) CONV2D           baseline: compute=21071 mem=24289 [memory]   cosma: compute=21071 mem=768 [compute]
+  t= 53 (layer 53) CONV2D           baseline: compute=31607 mem=32977 [memory]   cosma: compute=31607 mem=1152 [compute]
+  t= 57 (layer 57) CONV2D           baseline: compute=24583 mem=28337 [memory]   cosma: compute=24583 mem=896 [compute]
+  t= 58 (layer 58) CONV2D           baseline: compute=31607 mem=32977 [memory]   cosma: compute=31607 mem=1152 [compute]
+  t= 62 (layer 62) CONV2D           baseline: compute=28095 mem=32385 [memory]   cosma: compute=28095 mem=1024 [compute]
+  t= 63 (layer 63) CONV2D           baseline: compute=31607 mem=32977 [memory]   cosma: compute=31607 mem=1152 [compute]
+  t= 67 (layer 67) CONV2D           baseline: compute=31607 mem=36433 [memory]   cosma: compute=31607 mem=1152 [compute]
+  t= 68 (layer 68) CONV2D           baseline: compute=31607 mem=32977 [memory]   cosma: compute=31607 mem=1152 [compute]
+  t= 72 (layer 72) CONV2D           baseline: compute=35119 mem=40481 [memory]   cosma: compute=35119 mem=1280 [compute]
+  t= 73 (layer 73) CONV2D           baseline: compute=31607 mem=32977 [memory]   cosma: compute=31607 mem=1152 [compute]
+  t= 77 (layer 77) CONV2D           baseline: compute=38631 mem=44529 [memory]   cosma: compute=38631 mem=1408 [compute]
+  t= 78 (layer 78) CONV2D           baseline: compute=31607 mem=32977 [memory]   cosma: compute=31607 mem=1152 [compute]
+  t= 82 (layer 82) CONV2D           baseline: compute=42143 mem=48577 [memory]   cosma: compute=42143 mem=1536 [compute]
+  t= 83 (layer 83) CONV2D           baseline: compute=31607 mem=32977 [memory]   cosma: compute=31607 mem=1152 [compute]
+  t= 87 (layer 87) CONV2D           baseline: compute=45655 mem=52625 [memory]   cosma: compute=45655 mem=1664 [compute]
+  t= 88 (layer 88) CONV2D           baseline: compute=31607 mem=32977 [memory]   cosma: compute=31607 mem=1152 [compute]
+  t= 92 (layer 92) CONV2D           baseline: compute=49167 mem=56673 [memory]   cosma: compute=49167 mem=1792 [compute]
+  t= 93 (layer 93) CONV2D           baseline: compute=31607 mem=32977 [memory]   cosma: compute=31607 mem=1152 [compute]
+  t= 97 (layer 97) CONV2D           baseline: compute=52679 mem=60721 [memory]   cosma: compute=52679 mem=1920 [compute]
+  t= 98 (layer 98) CONV2D           baseline: compute=31607 mem=32977 [memory]   cosma: compute=31607 mem=1152 [compute]
+  t=102 (layer 102) CONV2D           baseline: compute=112383 mem=116993 [memory]   cosma: compute=112383 mem=4096 [compute]
+Saved SPM occupancy comparison to /data/grizos/Scale-Sim-SPM/cosma/spm_plots/_exported_densenet121-tflite-float_32x32_6330kb_cosma_native.png
+  non-compulsory bytes: 4816896, DRAM reduction: 89.5%, speedup: 1.0293x
+
+--- Budget: 6330.0 KB ---
+combo               status      total_non_compulsory_access_bytes  dram_traffic_reduction_pct  speedup  error                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         
+------------------  ----------  ---------------------------------  --------------------------  -------  ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+default+belady      ERROR                                                                               TfliteArenaAllocationError: place_tensors_linear(): tensor 62's episode [29,35] needs 401408 bytes but no gap fits in the 6481920-byte budget against time-overlapping placed episodes [(0, 2809856), (0, 2809856), (0, 3211264), (2408448, 1605632), (2809856, 802816), (2809856, 1605632), (2809856, 2809856), (3211264, 802816), (4816896, 401408), (5218304, 401408), (5619712, 401408), (6021120, 401408)] -- a real TFLite-linear-allocator capacity/fragmentation failure, not necessarily a bug (general dynamic storage allocation is NP-hard; see this module's docstring). COSMA's own joint placement+replacement ILP can succeed here even when this heuristic can't -- that gap is exactly what the paper's comparison measures.
+default+ilp_greedy  Optimal     5619712                            88.78                       1.0221                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 
+mpmf+belady         ERROR                                                                               TfliteArenaAllocationError: place_tensors_linear(): tensor 62's episode [29,35] needs 401408 bytes but no gap fits in the 6481920-byte budget against time-overlapping placed episodes [(0, 2809856), (0, 2809856), (0, 3211264), (2408448, 1605632), (2809856, 802816), (2809856, 1605632), (2809856, 2809856), (3211264, 802816), (4816896, 401408), (5218304, 401408), (5619712, 401408), (6021120, 401408)] -- a real TFLite-linear-allocator capacity/fragmentation failure, not necessarily a bug (general dynamic storage allocation is NP-hard; see this module's docstring). COSMA's own joint placement+replacement ILP can succeed here even when this heuristic can't -- that gap is exactly what the paper's comparison measures.
+mpmf+ilp_greedy     Optimal     5619712                            88.78                       1.0221                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 
+cosma_native        Not Solved  4816896                            89.5                        1.0293                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 
+Running SCALE-Sim baseline for /data/grizos/Scale-Sim-SPM/cosma/_exported/_exported_densenet121-tflite-float/model.json ...
+Solving MPMF schedule ILP (cosma_Ilp.compute_true_mpmf_bytes) ...
+Set parameter TimeLimit to value 1500
+Gurobi Optimizer version 11.0.3 build v11.0.3rc0 (linux64 - "Ubuntu 20.04.6 LTS")
+
+CPU model: INTEL(R) XEON(R) SILVER 4510, instruction set [SSE2|AVX|AVX2|AVX512]
+Thread count: 24 physical cores, 48 logical processors, using up to 24 threads
+
+Academic license 2862201 - for non-commercial use only - registered to ge___@gmail.com
+Optimize a model with 459576 rows, 194689 columns and 1403688 nonzeros
+Model fingerprint: 0x75420d61
+Variable types: 0 continuous, 194689 integer (0 binary)
+Coefficient statistics:
+  Matrix range     [1e+00, 3e+06]
+  Objective range  [1e+00, 1e+00]
+  Bounds range     [1e+00, 2e+08]
+  RHS range        [1e+00, 1e+00]
+Presolve removed 98953 rows and 24155 columns (presolve time = 5s) ...
+Presolve removed 135577 rows and 40593 columns (presolve time = 10s) ...
+Presolve removed 174757 rows and 55814 columns
+Presolve time: 13.88s
+Presolved: 284819 rows, 138875 columns, 948631 nonzeros
+Variable types: 0 continuous, 138875 integer (138874 binary)
+Found heuristic solution: objective 8429568.0000
+
+Explored 0 nodes (0 simplex iterations) in 14.21 seconds (24.68 work units)
+Thread count was 24 (of 48 available processors)
+
+Solution count 1: 8.42957e+06 
+
+Optimal solution found (tolerance 1.00e-04)
+Best objective 8.429568000000e+06, best bound 8.429568000000e+06, gap 0.0000%
+Gurobi status= 2
+
+=== default+belady ===
+[replacement_engine] 312 timesteps, 2 spills, 1204224 bytes spilled, 0 infeasibilities
+  FAILED: TfliteArenaAllocationError: place_tensors_linear(): tensor 62's episode [29,35] needs 401408 bytes but no gap fits in the 7455744-byte budget against time-overlapping placed episodes [(0, 2809856), (0, 2809856), (0, 3211264), (2408448, 1605632), (2809856, 1605632), (2809856, 2809856), (3211264, 802816), (4816896, 802816), (5619712, 401408), (6021120, 401408), (6422528, 401408), (6823936, 401408)] -- a real TFLite-linear-allocator capacity/fragmentation failure, not necessarily a bug (general dynamic storage allocation is NP-hard; see this module's docstring). COSMA's own joint placement+replacement ILP can succeed here even when this heuristic can't -- that gap is exactly what the paper's comparison measures.
+
+=== default+ilp_greedy ===
+Set parameter TimeLimit to value 10
+Gurobi Optimizer version 11.0.3 build v11.0.3rc0 (linux64 - "Ubuntu 20.04.6 LTS")
+
+CPU model: INTEL(R) XEON(R) SILVER 4510, instruction set [SSE2|AVX|AVX2|AVX512]
+Thread count: 24 physical cores, 48 logical processors, using up to 24 threads
+
+Academic license 2862201 - for non-commercial use only - registered to ge___@gmail.com
+Optimize a model with 1 rows, 6 columns and 6 nonzeros
+Model fingerprint: 0x1b61233d
+Variable types: 0 continuous, 6 integer (0 binary)
+Coefficient statistics:
+  Matrix range     [4e+05, 8e+05]
+  Objective range  [4e+05, 8e+05]
+  Bounds range     [1e+00, 1e+00]
+  RHS range        [1e+06, 1e+06]
+Found heuristic solution: objective 1204224.0000
+Presolve removed 1 rows and 6 columns
+Presolve time: 0.00s
+Presolve: All rows and columns removed
+
+Explored 0 nodes (0 simplex iterations) in 0.00 seconds (0.00 work units)
+Thread count was 1 (of 48 available processors)
+
+Solution count 1: 1.20422e+06 
+
+Optimal solution found (tolerance 1.00e-04)
+Best objective 1.204224000000e+06, best bound 1.204224000000e+06, gap 0.0000%
+Gurobi status= 2
+[replacement_engine] 312 timesteps, 3 spills, 1204224 bytes spilled, 0 infeasibilities
+[COSMA SPM] verified 312 timesteps, peak occupancy 7225344/7455744 bytes, 0 violations
+  non-compulsory bytes: 2408448, DRAM reduction: 91.7%, speedup: 1.0516x
+  saved plot to /data/grizos/Scale-Sim-SPM/cosma/spm_plots/_exported_densenet121-tflite-float_32x32_7281kb_default+ilp_greedy.png
+
+=== mpmf+belady ===
+[replacement_engine] 312 timesteps, 2 spills, 1204224 bytes spilled, 0 infeasibilities
+  FAILED: TfliteArenaAllocationError: place_tensors_linear(): tensor 62's episode [29,35] needs 401408 bytes but no gap fits in the 7455744-byte budget against time-overlapping placed episodes [(0, 2809856), (0, 2809856), (0, 3211264), (2408448, 1605632), (2809856, 1605632), (2809856, 2809856), (3211264, 802816), (4816896, 802816), (5619712, 401408), (6021120, 401408), (6422528, 401408), (6823936, 401408)] -- a real TFLite-linear-allocator capacity/fragmentation failure, not necessarily a bug (general dynamic storage allocation is NP-hard; see this module's docstring). COSMA's own joint placement+replacement ILP can succeed here even when this heuristic can't -- that gap is exactly what the paper's comparison measures.
+
+=== mpmf+ilp_greedy ===
+Set parameter TimeLimit to value 10
+Gurobi Optimizer version 11.0.3 build v11.0.3rc0 (linux64 - "Ubuntu 20.04.6 LTS")
+
+CPU model: INTEL(R) XEON(R) SILVER 4510, instruction set [SSE2|AVX|AVX2|AVX512]
+Thread count: 24 physical cores, 48 logical processors, using up to 24 threads
+
+Academic license 2862201 - for non-commercial use only - registered to ge___@gmail.com
+Optimize a model with 1 rows, 6 columns and 6 nonzeros
+Model fingerprint: 0x1b61233d
+Variable types: 0 continuous, 6 integer (0 binary)
+Coefficient statistics:
+  Matrix range     [4e+05, 8e+05]
+  Objective range  [4e+05, 8e+05]
+  Bounds range     [1e+00, 1e+00]
+  RHS range        [1e+06, 1e+06]
+Found heuristic solution: objective 1204224.0000
+Presolve removed 1 rows and 6 columns
+Presolve time: 0.00s
+Presolve: All rows and columns removed
+
+Explored 0 nodes (0 simplex iterations) in 0.00 seconds (0.00 work units)
+Thread count was 1 (of 48 available processors)
+
+Solution count 1: 1.20422e+06 
+
+Optimal solution found (tolerance 1.00e-04)
+Best objective 1.204224000000e+06, best bound 1.204224000000e+06, gap 0.0000%
+Gurobi status= 2
+[replacement_engine] 312 timesteps, 3 spills, 1204224 bytes spilled, 0 infeasibilities
+[COSMA SPM] verified 312 timesteps, peak occupancy 7225344/7455744 bytes, 0 violations
+  non-compulsory bytes: 2408448, DRAM reduction: 91.7%, speedup: 1.0516x
+  saved plot to /data/grizos/Scale-Sim-SPM/cosma/spm_plots/_exported_densenet121-tflite-float_32x32_7281kb_mpmf+ilp_greedy.png
+
+=== cosma_native ===
+Set parameter TimeLimit to value 1500
+Gurobi Optimizer version 11.0.3 build v11.0.3rc0 (linux64 - "Ubuntu 20.04.6 LTS")
+
+CPU model: INTEL(R) XEON(R) SILVER 4510, instruction set [SSE2|AVX|AVX2|AVX512]
+Thread count: 24 physical cores, 48 logical processors, using up to 24 threads
+
+Academic license 2862201 - for non-commercial use only - registered to ge___@gmail.com
+Optimize a model with 1439802 rows, 768306 columns and 19735266 nonzeros
+Model fingerprint: 0x8db4dd23
+Variable types: 0 continuous, 768306 integer (0 binary)
+Coefficient statistics:
+  Matrix range     [1e+00, 7e+06]
+  Objective range  [4e+03, 3e+06]
+  Bounds range     [1e+00, 7e+06]
+  RHS range        [1e+00, 1e+07]
+Presolve removed 347258 rows and 148032 columns (presolve time = 5s) ...
+Presolve removed 361435 rows and 194181 columns (presolve time = 10s) ...
+Presolve removed 452841 rows and 197330 columns (presolve time = 15s) ...
+Presolve removed 568900 rows and 379919 columns (presolve time = 20s) ...
+Presolve removed 601164 rows and 390000 columns (presolve time = 25s) ...
+Presolve removed 767795 rows and 410776 columns (presolve time = 30s) ...
+Presolve removed 782439 rows and 419600 columns (presolve time = 35s) ...
+Presolve removed 793226 rows and 424560 columns (presolve time = 40s) ...
+Presolve removed 800718 rows and 428429 columns (presolve time = 45s) ...
+Presolve removed 813320 rows and 436659 columns (presolve time = 50s) ...
+Presolve removed 828584 rows and 443876 columns (presolve time = 55s) ...
+Presolve removed 843479 rows and 451846 columns (presolve time = 60s) ...
+Presolve removed 857330 rows and 459066 columns (presolve time = 65s) ...
+Presolve removed 870217 rows and 466040 columns (presolve time = 70s) ...
+Presolve removed 882222 rows and 472578 columns (presolve time = 75s) ...
+Presolve removed 893982 rows and 479826 columns (presolve time = 80s) ...
+Presolve removed 913684 rows and 489937 columns (presolve time = 85s) ...
+Presolve removed 923294 rows and 496150 columns (presolve time = 90s) ...
+Presolve removed 940124 rows and 504821 columns (presolve time = 95s) ...
+Presolve removed 959844 rows and 515373 columns (presolve time = 100s) ...
+Presolve removed 1004718 rows and 542829 columns (presolve time = 105s) ...
+Presolve removed 1079683 rows and 580749 columns (presolve time = 110s) ...
+Presolve removed 1158153 rows and 620844 columns (presolve time = 115s) ...
+Presolve removed 1171048 rows and 627399 columns
+Presolve time: 115.40s
+Presolved: 268754 rows, 140907 columns, 1683365 nonzeros
+Variable types: 0 continuous, 140907 integer (124086 binary)
+Found heuristic solution: objective 4.166490e+07
+
+Deterministic concurrent LP optimizer: primal and dual simplex (primal and dual model)
+Showing primal log only...
+
+Root relaxation presolved: 91149 rows, 54262 columns, 370438 nonzeros
+
+
+Root simplex log...
+
+Iteration    Objective       Primal Inf.    Dual Inf.      Time
+       0    3.6503928e+07   2.010970e+05   3.374571e+08    130s
+Concurrent spin time: 0.04s
+
+Solved with primal simplex
+
+Root relaxation: objective 0.000000e+00, 41887 iterations, 0.72 seconds (0.49 work units)
+Total elapsed time = 130.72s (DegenMoves)
+
+    Nodes    |    Current Node    |     Objective Bounds      |     Work
+ Expl Unexpl |  Obj  Depth IntInf | Incumbent    BestBd   Gap | It/Node Time
+
+     0     0    0.00000    0 30981 4.1665e+07    0.00000   100%     -  133s
+     0     0    0.00000    0 24613 4.1665e+07    0.00000   100%     -  148s
+     0     0    0.00000    0 23066 4.1665e+07    0.00000   100%     -  161s
+     0     0    0.00000    0 22110 4.1665e+07    0.00000   100%     -  175s
+     0     0    0.00000    0 22053 4.1665e+07    0.00000   100%     -  179s
+     0     0    0.00000    0 22109 4.1665e+07    0.00000   100%     -  194s
+     0     0    0.00000    0 22088 4.1665e+07    0.00000   100%     -  201s
+     0     0    0.00000    0 21669 4.1665e+07    0.00000   100%     -  212s
+     0     0    0.00000    0 21899 4.1665e+07    0.00000   100%     -  214s
+     0     0    0.00000    0 21366 4.1665e+07    0.00000   100%     -  225s
+     0     0    0.00000    0 21522 4.1665e+07    0.00000   100%     -  234s
+     0     0    0.00000    0 21795 4.1665e+07    0.00000   100%     -  244s
+     0     0    0.00000    0 21683 4.1665e+07    0.00000   100%     -  246s
+     0     0    0.00000    0 20918 4.1665e+07    0.00000   100%     -  256s
+     0     0    0.00000    0 20918 4.1665e+07    0.00000   100%     -  266s
+H    0     0                    3.295936e+07    0.00000   100%     -  269s
+     0     2    0.00000    0 20918 3.2959e+07    0.00000   100%     -  313s
+     3     8    0.00000    2 23663 3.2959e+07    0.00000   100% 29114  315s
+    31    56    0.00000    5 22108 3.2959e+07    0.00000   100%  7049  330s
+    79   104    0.00000    6 21840 3.2959e+07    0.00000   100%  4815  343s
+H  103   127                    3.292800e+07    0.00000   100%  4149  345s
+H  105   127                    3.275238e+07    0.00000   100%  4076  345s
+H  106   127                    3.173005e+07    0.00000   100%  4037  345s
+   127   166    0.00000    8 21487 3.1730e+07    0.00000   100%  3442  351s
+H  166   189                    2.970419e+07    0.00000   100%  2935  364s
+H  167   189                    2.894528e+07    0.00000   100%  2928  364s
+H  177   189                    2.889510e+07    0.00000   100%  3017  364s
+H  178   189                    2.810483e+07    0.00000   100%  3000  365s
+   190   315    0.00000   10 22212 2.8105e+07    0.00000   100%  3085  371s
+H  316   339                    2.071642e+07    0.00000   100%  2140  411s
+H  317   339                    1.924250e+07    0.00000   100%  2134  411s
+H  318   339                    1.832678e+07    0.00000   100%  2127  411s
+H  328   339                    1.778739e+07    0.00000   100%  2083  411s
+   340   691    0.00000   15 21476 1.7787e+07    0.00000   100%  2032  425s
+H  371   691                    1.773722e+07    0.00000   100%  1933  425s
+H  380   691                    1.685914e+07    0.00000   100%  1931  425s
+H  407   691                    1.036762e+07    0.00000   100%  1888  425s
+   699   974    0.00000   25 17129 1.0368e+07    0.00000   100%  1401  465s
+H  702   974                    9288832.0000    0.00000   100%  1421  466s
+H  706   974                    9094400.0000    0.00000   100%  1431  466s
+H  710   974                    8975232.0000    0.00000   100%  1466  466s
+H  714   974                    7124992.0000    0.00000   100%  1495  466s
+H  964   974                    7024640.0000    0.00000   100%  1429  466s
+   986  1809    0.00000   28 17123 7024640.00    0.00000   100%  1449  510s
+H 1835  4573                    6021120.0000    0.00000   100%  1439  600s
+H 2223  4573                    5092864.0000    0.00000   100%  1216  600s
+H 3672  4573                    4415488.0000    0.00000   100%   858  600s
+  4606  7305    0.00000  285 17784 4415488.00    0.00000   100%   755  635s
+H 7364  9547                    2408448.0000    0.00000   100%   646  665s
+  9626 12423    0.00000  558 16053 2408448.00    0.00000   100%   578  693s
+ 12534 12424 37632.0000  266 26149 2408448.00    0.00000   100%   526  721s
+ 12536 12425    0.00000  351 33585 2408448.00    0.00000   100%   526  728s
+ 12537 12426 37632.0000  143 27664 2408448.00    0.00000   100%   526  758s
+ 12538 12427    0.00000  193 26311 2408448.00    0.00000   100%   526  764s
+ 12539 12427    0.00000  732 17127 2408448.00    0.00000   100%   525  799s
+ 12540 12428    0.00000  351 18077 2408448.00    0.00000   100%   525  810s
+ 12541 12429    0.00000  312 17164 2408448.00    0.00000   100%   525  852s
+ 12542 12429    0.00000  112 16232 2408448.00    0.00000   100%   525  856s
+ 12543 12430    0.00000  587 16111 2408448.00    0.00000   100%   525  866s
+ 12544 12431    0.00000    7 16241 2408448.00    0.00000   100%   525  870s
+ 12545 12431    0.00000  148 6267 2408448.00    0.00000   100%   525  969s
+ 12546 12432    0.00000  168 7536 2408448.00    0.00000   100%   525  972s
+ 12547 12433   75.12353  127 6628 2408448.00    0.00000   100%   525  987s
+ 12549 12434 288512.000  368 4280 2408448.00    0.00000   100%   525 1003s
+ 12550 12435    0.00000  102 4905 2408448.00    0.00000   100%   525 1005s
+ 12551 12435    0.00000   46 2546 2408448.00    0.00000   100%   525 1014s
+ 12552 12436 12544.0000  395 2544 2408448.00    0.00000   100%   525 1015s
+ 12553 12437    0.00000  454 1250 2408448.00    0.00000   100%   525 1021s
+ 12555 12438    0.00000  699  391 2408448.00    0.00000   100%   525 1026s
+ 12559 12441    0.00000  205   47 2408448.00    0.00000   100%   525 1030s
+ 12566 12445 501760.000  112   90 2408448.00    0.00000   100%   524 1035s
+ 12567 12446    0.00000  705   90 2408448.00    0.00000   100%   524 1042s
+ 12570 12453    0.00000   15   49 2408448.00    0.00000   100%   588 1045s
+ 12670 12536    0.00000   20   74 2408448.00    0.00000   100%   584 1051s
+ 12719 12566    0.00000   21   71 2408448.00    0.00000   100%   582 1057s
+ 12743 12581 535210.667   21   74 2408448.00    0.00000   100%   581 1068s
+ 12803 12630    0.00000   23   67 2408448.00    0.00000   100%   579 1070s
+ 13207 12993 507284.115   31  227 2408448.00    0.00000   100%   563 1077s
+ 13622 13097 1605632.00   38  378 2408448.00    0.00000   100%   549 1086s
+ 13665 13128 501760.000   39  271 2408448.00    0.00000   100%   548 1125s
+ 13714 13155 19448.2896   40  192 2408448.00    0.00000   100%   546 1231s
+ 13770 13171 508097.417   40  243 2408448.00    0.00000   100%   544 1265s
+ 13831 13534 1003520.00   41  272 2408448.00    0.00000   100%   542 1271s
+ 14397 13781 1204224.00   51  187 2408448.00    0.00000   100%   524 1277s
+ 14981 13959     cutoff   66      2408448.00    0.00000   100%   506 1283s
+ 15554 14041     cutoff   52      2408448.00    0.00000   100%   491 1289s
+ 16075 14406 802816.000   41   42 2408448.00    0.00000   100%   478 1294s
+ 16793 14945    0.00000   45  105 2408448.00    0.00000   100%   461 1301s
+ 18179 14985 1634796.00   46  108 2408448.00    0.00000   100%   430 1307s
+ 18885 15593 839863.957   43  142 2408448.00    0.00000   100%   417 1314s
+ 20184 15756 808614.475   34  186 2408448.00    0.00000   100%   395 1320s
+ 21442 15355 1611277.70   74  108 2408448.00    0.00000   100%   376 1376s
+ 21476 15998 infeasible   75      2408448.00    0.00000   100%   376 1383s
+ 22787 16153 1605632.00   58   82 2408448.00    0.00000   100%   359 1389s
+ 24123 16383 1070421.33   54  214 2408448.00    0.00000   100%   343 1396s
+ 25424 15951 1265834.61   36 24694 2408448.00    0.00000   100%   330 1411s
+ 25426 15952 535210.667   31 26331 2408448.00    0.00000   100%   330 1420s
+
+Cutting planes:
+  Gomory: 14
+  Flow cover: 167
+
+Explored 25426 nodes (9266422 simplex iterations) in 1500.28 seconds (1834.37 work units)
+Thread count was 24 (of 48 available processors)
+
+Solution count 10: 2.40845e+06 2.40845e+06 4.41549e+06 ... 8.97523e+06
+
+Time limit reached
+Best objective 2.408448000000e+06, best bound 0.000000000000e+00, gap 100.0000%
+Gurobi status= 9
+WARNING: COSMA ILP did not prove optimality (status=Not Solved) -- accepting Gurobi's best incumbent solution found so far (e.g. from a Ctrl+C interrupt or --time-limit) instead of a proven-optimal one. SPM addresses/schedule below are a feasible, but not provably optimal, plan.
+[COSMA SPM] verified 312 timesteps, peak occupancy 7225344/7455744 bytes, 0 violations
+[visualize_spm] compaction failed, falling back to the solver's own raw addresses: compact_spm_plan(): no 401408-byte gap fits in a 7455744-byte budget against current occupants [(0, 2809856), (0, 2809856), (0, 3211264), (2408448, 1605632), (2809856, 1605632), (2809856, 2809856), (3211264, 802816), (4816896, 802816), (5619712, 401408), (6021120, 401408), (6422528, 401408), (6823936, 401408)] -- a real dynamic-storage-allocation heuristic failure (fragmentation),not necessarily a bug -- see compact_spm_plan()'s docstring; the caller should fall back to the original spm_plan.
+SPM budget: 7455744 bytes
+ILP status: Not Solved (accepted feasible incumbent, NOT proven optimal)
+--- COSMA's contribution (real, SCALE-Sim-engine-simulated) ---
+Ifmap bytes avoided by keeping activations resident ('P'): 15574923
+Ofmap bytes avoided (a layer's own output never leaves the chip at creation): 88865385
+--- COSMA's overhead to fit the budget (idealized -- no SCALE-Sim analog exists for these) ---
+Idealized spill DRAM bytes (no SCALE-Sim analog): 1204224
+Idealized retrieve DRAM bytes (consumed by a non-conv layer, no SCALE-Sim analog): 1204224
+Real (SCALE-Sim-simulated) retrieve DRAM bytes: 0
+Non-compulsory off-chip access volume (paper's own primary metric, §V-A2 -- spill+retrieve bytes, real or idealized): 2408448
+Baseline DRAM bytes (no unified SPM): 111310516
+COSMA DRAM bytes: 9278656
+DRAM traffic reduction: 91.7%
+Baseline total cycles: 3662446.2
+COSMA total cycles: 3482812.0
+Speedup: 1.0516x
+--- Compute-vs-memory bound breakdown, per layer (max(compute_cycles, dram_bytes/32)) ---
+Baseline: 39/312 layers memory-bound
+COSMA:    2/312 layers memory-bound
+Layers where memory was (or became) the bottleneck -- these are the only ones where COSMA's DRAM reduction can show up as real speedup:
+  t=  3 (layer 3) CONV2D           baseline: compute=126379 mem=130651 [memory]   cosma: compute=126379 mem=294 [compute]
+  t=  8 (layer 8) CONV2D           baseline: compute=25839 mem=31616 [memory]   cosma: compute=25839 mem=256 [compute]
+  t=  9 (layer 9) CONV2D           baseline: compute=116279 mem=127505 [memory]   cosma: compute=116279 mem=1152 [compute]
+  t= 13 (layer 13) CONV2D           baseline: compute=38759 mem=47425 [memory]   cosma: compute=38759 mem=384 [compute]
+  t= 14 (layer 14) CONV2D           baseline: compute=116279 mem=127505 [memory]   cosma: compute=116279 mem=1152 [compute]
+  t= 18 (layer 18) CONV2D           baseline: compute=51679 mem=63233 [memory]   cosma: compute=51679 mem=512 [compute]
+  t= 19 (layer 19) CONV2D           baseline: compute=116279 mem=127505 [memory]   cosma: compute=116279 mem=1152 [compute]
+  t= 23 (layer 23) CONV2D           baseline: compute=64599 mem=79041 [memory]   cosma: compute=64599 mem=640 [compute]
+  t= 24 (layer 24) CONV2D           baseline: compute=116279 mem=127505 [memory]   cosma: compute=116279 mem=1152 [compute]
+  t= 28 (layer 28) CONV2D           baseline: compute=77519 mem=94849 [memory]   cosma: compute=77519 mem=768 [compute]
+  t= 29 (layer 29) CONV2D           baseline: compute=116279 mem=127505 [memory]   cosma: compute=116279 mem=1152 [compute]
+  t= 31 (layer 31) MUL              baseline: compute=0 mem=0 [compute]   cosma: compute=0 mem=37632 [memory]
+  t= 33 (layer 33) CONV2D           baseline: compute=90439 mem=110657 [memory]   cosma: compute=90439 mem=896 [compute]
+  t= 34 (layer 34) CONV2D           baseline: compute=116279 mem=127505 [memory]   cosma: compute=116279 mem=1152 [compute]
+  t= 35 (layer 35) CONCAT           baseline: compute=0 mem=0 [compute]   cosma: compute=0 mem=37632 [memory]
+  t= 38 (layer 38) CONV2D           baseline: compute=103359 mem=126465 [memory]   cosma: compute=103359 mem=1024 [compute]
+  t= 42 (layer 42) CONV2D           baseline: compute=14047 mem=16193 [memory]   cosma: compute=14047 mem=512 [compute]
+  t= 43 (layer 43) CONV2D           baseline: compute=31607 mem=32977 [memory]   cosma: compute=31607 mem=1152 [compute]
+  t= 47 (layer 47) CONV2D           baseline: compute=17559 mem=20241 [memory]   cosma: compute=17559 mem=640 [compute]
+  t= 48 (layer 48) CONV2D           baseline: compute=31607 mem=32977 [memory]   cosma: compute=31607 mem=1152 [compute]
+  t= 52 (layer 52) CONV2D           baseline: compute=21071 mem=24289 [memory]   cosma: compute=21071 mem=768 [compute]
+  t= 53 (layer 53) CONV2D           baseline: compute=31607 mem=32977 [memory]   cosma: compute=31607 mem=1152 [compute]
+  t= 57 (layer 57) CONV2D           baseline: compute=24583 mem=28337 [memory]   cosma: compute=24583 mem=896 [compute]
+  t= 58 (layer 58) CONV2D           baseline: compute=31607 mem=32977 [memory]   cosma: compute=31607 mem=1152 [compute]
+  t= 62 (layer 62) CONV2D           baseline: compute=28095 mem=32385 [memory]   cosma: compute=28095 mem=1024 [compute]
+  t= 63 (layer 63) CONV2D           baseline: compute=31607 mem=32977 [memory]   cosma: compute=31607 mem=1152 [compute]
+  t= 67 (layer 67) CONV2D           baseline: compute=31607 mem=36433 [memory]   cosma: compute=31607 mem=1152 [compute]
+  t= 68 (layer 68) CONV2D           baseline: compute=31607 mem=32977 [memory]   cosma: compute=31607 mem=1152 [compute]
+  t= 72 (layer 72) CONV2D           baseline: compute=35119 mem=40481 [memory]   cosma: compute=35119 mem=1280 [compute]
+  t= 73 (layer 73) CONV2D           baseline: compute=31607 mem=32977 [memory]   cosma: compute=31607 mem=1152 [compute]
+  t= 77 (layer 77) CONV2D           baseline: compute=38631 mem=44529 [memory]   cosma: compute=38631 mem=1408 [compute]
+  t= 78 (layer 78) CONV2D           baseline: compute=31607 mem=32977 [memory]   cosma: compute=31607 mem=1152 [compute]
+  t= 82 (layer 82) CONV2D           baseline: compute=42143 mem=48577 [memory]   cosma: compute=42143 mem=1536 [compute]
+  t= 83 (layer 83) CONV2D           baseline: compute=31607 mem=32977 [memory]   cosma: compute=31607 mem=1152 [compute]
+  t= 87 (layer 87) CONV2D           baseline: compute=45655 mem=52625 [memory]   cosma: compute=45655 mem=1664 [compute]
+  t= 88 (layer 88) CONV2D           baseline: compute=31607 mem=32977 [memory]   cosma: compute=31607 mem=1152 [compute]
+  t= 92 (layer 92) CONV2D           baseline: compute=49167 mem=56673 [memory]   cosma: compute=49167 mem=1792 [compute]
+  t= 93 (layer 93) CONV2D           baseline: compute=31607 mem=32977 [memory]   cosma: compute=31607 mem=1152 [compute]
+  t= 97 (layer 97) CONV2D           baseline: compute=52679 mem=60721 [memory]   cosma: compute=52679 mem=1920 [compute]
+  t= 98 (layer 98) CONV2D           baseline: compute=31607 mem=32977 [memory]   cosma: compute=31607 mem=1152 [compute]
+  t=102 (layer 102) CONV2D           baseline: compute=112383 mem=116993 [memory]   cosma: compute=112383 mem=4096 [compute]
+Saved SPM occupancy comparison to /data/grizos/Scale-Sim-SPM/cosma/spm_plots/_exported_densenet121-tflite-float_32x32_7281kb_cosma_native.png
+  non-compulsory bytes: 2408448, DRAM reduction: 91.7%, speedup: 1.0516x
+
+--- Budget: 7281.0 KB ---
+combo               status      total_non_compulsory_access_bytes  dram_traffic_reduction_pct  speedup  error                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         
+------------------  ----------  ---------------------------------  --------------------------  -------  ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+default+belady      ERROR                                                                               TfliteArenaAllocationError: place_tensors_linear(): tensor 62's episode [29,35] needs 401408 bytes but no gap fits in the 7455744-byte budget against time-overlapping placed episodes [(0, 2809856), (0, 2809856), (0, 3211264), (2408448, 1605632), (2809856, 1605632), (2809856, 2809856), (3211264, 802816), (4816896, 802816), (5619712, 401408), (6021120, 401408), (6422528, 401408), (6823936, 401408)] -- a real TFLite-linear-allocator capacity/fragmentation failure, not necessarily a bug (general dynamic storage allocation is NP-hard; see this module's docstring). COSMA's own joint placement+replacement ILP can succeed here even when this heuristic can't -- that gap is exactly what the paper's comparison measures.
+default+ilp_greedy  Optimal     2408448                            91.66                       1.0516                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 
+mpmf+belady         ERROR                                                                               TfliteArenaAllocationError: place_tensors_linear(): tensor 62's episode [29,35] needs 401408 bytes but no gap fits in the 7455744-byte budget against time-overlapping placed episodes [(0, 2809856), (0, 2809856), (0, 3211264), (2408448, 1605632), (2809856, 1605632), (2809856, 2809856), (3211264, 802816), (4816896, 802816), (5619712, 401408), (6021120, 401408), (6422528, 401408), (6823936, 401408)] -- a real TFLite-linear-allocator capacity/fragmentation failure, not necessarily a bug (general dynamic storage allocation is NP-hard; see this module's docstring). COSMA's own joint placement+replacement ILP can succeed here even when this heuristic can't -- that gap is exactly what the paper's comparison measures.
+mpmf+ilp_greedy     Optimal     2408448                            91.66                       1.0516                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 
+cosma_native        Not Solved  2408448                            91.66                       1.0516                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 
+Running SCALE-Sim baseline for /data/grizos/Scale-Sim-SPM/cosma/_exported/_exported_densenet121-tflite-float/model.json ...
+Solving MPMF schedule ILP (cosma_Ilp.compute_true_mpmf_bytes) ...
+Set parameter TimeLimit to value 1500
+Gurobi Optimizer version 11.0.3 build v11.0.3rc0 (linux64 - "Ubuntu 20.04.6 LTS")
+
+CPU model: INTEL(R) XEON(R) SILVER 4510, instruction set [SSE2|AVX|AVX2|AVX512]
+Thread count: 24 physical cores, 48 logical processors, using up to 24 threads
+
+Academic license 2862201 - for non-commercial use only - registered to ge___@gmail.com
+Optimize a model with 459576 rows, 194689 columns and 1403688 nonzeros
+Model fingerprint: 0x75420d61
+Variable types: 0 continuous, 194689 integer (0 binary)
+Coefficient statistics:
+  Matrix range     [1e+00, 3e+06]
+  Objective range  [1e+00, 1e+00]
+  Bounds range     [1e+00, 2e+08]
+  RHS range        [1e+00, 1e+00]
+Presolve removed 95193 rows and 22417 columns (presolve time = 5s) ...
+Presolve removed 135577 rows and 40593 columns (presolve time = 10s) ...
+Presolve removed 174757 rows and 55814 columns
+Presolve time: 14.68s
+Presolved: 284819 rows, 138875 columns, 948631 nonzeros
+Variable types: 0 continuous, 138875 integer (138874 binary)
+Found heuristic solution: objective 8429568.0000
+
+Explored 0 nodes (0 simplex iterations) in 15.08 seconds (24.68 work units)
+Thread count was 24 (of 48 available processors)
+
+Solution count 1: 8.42957e+06 
+
+Optimal solution found (tolerance 1.00e-04)
+Best objective 8.429568000000e+06, best bound 8.429568000000e+06, gap 0.0000%
+Gurobi status= 2
+
+=== default+belady ===
+[replacement_engine] 312 timesteps, 0 spills, 0 bytes spilled, 0 infeasibilities
+[COSMA SPM] verified 312 timesteps, peak occupancy 8429568/8429568 bytes, 0 violations
+  non-compulsory bytes: 0, DRAM reduction: 93.8%, speedup: 1.0748x
+  saved plot to /data/grizos/Scale-Sim-SPM/cosma/spm_plots/_exported_densenet121-tflite-float_32x32_8232kb_default+belady.png
+
+=== default+ilp_greedy ===
+[replacement_engine] 312 timesteps, 0 spills, 0 bytes spilled, 0 infeasibilities
+[COSMA SPM] verified 312 timesteps, peak occupancy 8429568/8429568 bytes, 0 violations
+  non-compulsory bytes: 0, DRAM reduction: 93.8%, speedup: 1.0748x
+  saved plot to /data/grizos/Scale-Sim-SPM/cosma/spm_plots/_exported_densenet121-tflite-float_32x32_8232kb_default+ilp_greedy.png
+
+=== mpmf+belady ===
+[replacement_engine] 312 timesteps, 0 spills, 0 bytes spilled, 0 infeasibilities
+[COSMA SPM] verified 312 timesteps, peak occupancy 8429568/8429568 bytes, 0 violations
+  non-compulsory bytes: 0, DRAM reduction: 93.8%, speedup: 1.0748x
+  saved plot to /data/grizos/Scale-Sim-SPM/cosma/spm_plots/_exported_densenet121-tflite-float_32x32_8232kb_mpmf+belady.png
+
+=== mpmf+ilp_greedy ===
+[replacement_engine] 312 timesteps, 0 spills, 0 bytes spilled, 0 infeasibilities
+[COSMA SPM] verified 312 timesteps, peak occupancy 8429568/8429568 bytes, 0 violations
+  non-compulsory bytes: 0, DRAM reduction: 93.8%, speedup: 1.0748x
+  saved plot to /data/grizos/Scale-Sim-SPM/cosma/spm_plots/_exported_densenet121-tflite-float_32x32_8232kb_mpmf+ilp_greedy.png
+
+=== cosma_native ===
+Set parameter TimeLimit to value 1500
+Gurobi Optimizer version 11.0.3 build v11.0.3rc0 (linux64 - "Ubuntu 20.04.6 LTS")
+
+CPU model: INTEL(R) XEON(R) SILVER 4510, instruction set [SSE2|AVX|AVX2|AVX512]
+Thread count: 24 physical cores, 48 logical processors, using up to 24 threads
+
+Academic license 2862201 - for non-commercial use only - registered to ge___@gmail.com
+Optimize a model with 1439802 rows, 768306 columns and 19735266 nonzeros
+Model fingerprint: 0x94b141e6
+Variable types: 0 continuous, 768306 integer (0 binary)
+Coefficient statistics:
+  Matrix range     [1e+00, 8e+06]
+  Objective range  [4e+03, 3e+06]
+  Bounds range     [1e+00, 8e+06]
+  RHS range        [1e+00, 2e+07]
+Presolve removed 347258 rows and 148032 columns (presolve time = 6s) ...
+Presolve removed 361435 rows and 194181 columns (presolve time = 10s) ...
+Presolve removed 361463 rows and 194498 columns (presolve time = 15s) ...
+Presolve removed 452841 rows and 197488 columns (presolve time = 20s) ...
+Presolve removed 597410 rows and 387096 columns (presolve time = 25s) ...
+Presolve removed 606013 rows and 407257 columns (presolve time = 30s) ...
+Presolve removed 767795 rows and 411113 columns (presolve time = 35s) ...
+Presolve removed 784107 rows and 419826 columns (presolve time = 40s) ...
+Presolve removed 791536 rows and 423520 columns (presolve time = 45s) ...
+Presolve removed 799354 rows and 428429 columns (presolve time = 50s) ...
+Presolve removed 813320 rows and 435168 columns (presolve time = 55s) ...
+Presolve removed 825687 rows and 441575 columns (presolve time = 60s) ...
+Presolve removed 829926 rows and 445153 columns (presolve time = 65s) ...
+Presolve removed 843479 rows and 453089 columns (presolve time = 70s) ...
+Presolve removed 857330 rows and 459298 columns (presolve time = 75s) ...
+Presolve removed 870217 rows and 466040 columns (presolve time = 80s) ...
+Presolve removed 880752 rows and 472073 columns (presolve time = 85s) ...
+Presolve removed 893385 rows and 478692 columns (presolve time = 90s) ...
+Presolve removed 903849 rows and 484473 columns (presolve time = 95s) ...
+Presolve removed 913688 rows and 491000 columns (presolve time = 100s) ...
+Presolve removed 927990 rows and 498202 columns (presolve time = 105s) ...
+Presolve removed 940124 rows and 504821 columns (presolve time = 110s) ...
+Presolve removed 956307 rows and 514269 columns (presolve time = 115s) ...
+Presolve removed 997385 rows and 539244 columns (presolve time = 120s) ...
+Presolve removed 1056486 rows and 568969 columns (presolve time = 125s) ...
+Presolve removed 1120913 rows and 601739 columns (presolve time = 130s) ...
+Presolve removed 1171048 rows and 627399 columns
+Presolve time: 133.98s
+Presolved: 268754 rows, 140907 columns, 1683365 nonzeros
+Variable types: 0 continuous, 140907 integer (124086 binary)
+Found heuristic solution: objective 4.166490e+07
+
+Deterministic concurrent LP optimizer: primal and dual simplex (primal and dual model)
+Showing primal log only...
+
+Root relaxation presolved: 91148 rows, 54260 columns, 370435 nonzeros
+
+
+Root simplex log...
+
+Iteration    Objective       Primal Inf.    Dual Inf.      Time
+       0    3.6503928e+07   2.010480e+05   3.369568e+08    150s
+    6358    3.4868566e+07   0.000000e+00   2.651633e+07    150s
+Concurrent spin time: 0.01s
+
+Solved with primal simplex
+
+Root relaxation: objective 0.000000e+00, 41741 iterations, 0.76 seconds (0.49 work units)
+Total elapsed time = 150.25s (DegenMoves)
+Total elapsed time = 155.43s (DegenMoves)
+
+    Nodes    |    Current Node    |     Objective Bounds      |     Work
+ Expl Unexpl |  Obj  Depth IntInf | Incumbent    BestBd   Gap | It/Node Time
+
+     0     0    0.00000    0 25897 4.1665e+07    0.00000   100%     -  156s
+     0     0    0.00000    0 21426 4.1665e+07    0.00000   100%     -  168s
+     0     0    0.00000    0 18437 4.1665e+07    0.00000   100%     -  178s
+     0     0    0.00000    0 16502 4.1665e+07    0.00000   100%     -  191s
+     0     0    0.00000    0 16880 4.1665e+07    0.00000   100%     -  196s
+     0     0    0.00000    0 8528 4.1665e+07    0.00000   100%     -  210s
+     0     0    0.00000    0 8473 4.1665e+07    0.00000   100%     -  219s
+     0     0    0.00000    0 7113 4.1665e+07    0.00000   100%     -  227s
+H    0     0                    2.092339e+07    0.00000   100%     -  227s
+     0     0    0.00000    0 7710 2.0923e+07    0.00000   100%     -  227s
+     0     0    0.00000    0 6386 2.0923e+07    0.00000   100%     -  238s
+H    0     0                    1.332173e+07    0.00000   100%     -  244s
+     0     0    0.00000    0 6425 1.3322e+07    0.00000   100%     -  245s
+     0     0    0.00000    0 6425 1.3322e+07    0.00000   100%     -  252s
+     0     0    0.00000    0 6425 1.3322e+07    0.00000   100%     -  258s
+H    0     0                    9081856.0000    0.00000   100%     -  260s
+H    0     0                    3211264.0000    0.00000   100%     -  270s
+     0     2    0.00000    0 6425 3211264.00    0.00000   100%     -  284s
+     3     8    0.00000    2 6421 3211264.00    0.00000   100% 13845  285s
+H  103   122                    1781248.0000    0.00000   100%  1376  292s
+H  159   178                    1354752.0000    0.00000   100%  1068  296s
+   448   593    0.00000   18 6515 1354752.00    0.00000   100%   551  300s
+H  919  1056                    376320.00000    0.00000   100%   419  306s
+  1103  1509 infeasible   37      376320.000    0.00000   100%   403  310s
+  1671  1956 3649.00918   55 7007 376320.000    0.00000   100%   345  316s
+H 2373  2002                    326144.00000    0.00000   100%   304  328s
+H 2375  1883                    301056.00000    0.00000   100%   303  328s
+H 2400  1877                    275968.00000    0.00000   100%   304  328s
+H 2435  2291                    225792.00000    0.00000   100%   308  335s
+  3079  3207 203100.466   38 7061 225792.000    0.00000   100%   292  342s
+  4282  3801 200704.000   89 6874 225792.000    0.00000   100%   253  351s
+H 4411  2111                    175616.00000    0.00000   100%   251  351s
+  5306  1556 100352.000    9 22498 175616.000    0.00000   100%   246  373s
+  5308  1557    0.00000  168 27558 175616.000    0.00000   100%   246  381s
+H 5308  1479                       0.0000000    0.00000  0.00%   246  405s
+
+Cutting planes:
+  Gomory: 3
+  Flow cover: 8
+
+Explored 5308 nodes (1970479 simplex iterations) in 405.24 seconds (514.68 work units)
+Thread count was 24 (of 48 available processors)
+
+Solution count 10: 0 175616 175616 ... 376320
+
+Optimal solution found (tolerance 1.00e-04)
+Best objective 0.000000000000e+00, best bound 0.000000000000e+00, gap 0.0000%
+Gurobi status= 2
+[COSMA SPM] verified 312 timesteps, peak occupancy 8429568/8429568 bytes, 0 violations
+SPM budget: 8429568 bytes
+ILP status: Optimal
+--- COSMA's contribution (real, SCALE-Sim-engine-simulated) ---
+Ifmap bytes avoided by keeping activations resident ('P'): 15574923
+Ofmap bytes avoided (a layer's own output never leaves the chip at creation): 88865385
+--- COSMA's overhead to fit the budget (idealized -- no SCALE-Sim analog exists for these) ---
+Idealized spill DRAM bytes (no SCALE-Sim analog): 0
+Idealized retrieve DRAM bytes (consumed by a non-conv layer, no SCALE-Sim analog): 0
+Real (SCALE-Sim-simulated) retrieve DRAM bytes: 0
+Non-compulsory off-chip access volume (paper's own primary metric, §V-A2 -- spill+retrieve bytes, real or idealized): 0
+Baseline DRAM bytes (no unified SPM): 111310516
+COSMA DRAM bytes: 6870208
+DRAM traffic reduction: 93.8%
+Baseline total cycles: 3662446.2
+COSMA total cycles: 3407548.0
+Speedup: 1.0748x
+--- Compute-vs-memory bound breakdown, per layer (max(compute_cycles, dram_bytes/32)) ---
+Baseline: 39/312 layers memory-bound
+COSMA:    0/312 layers memory-bound
+Layers where memory was (or became) the bottleneck -- these are the only ones where COSMA's DRAM reduction can show up as real speedup:
+  t=  3 (layer 3) CONV2D           baseline: compute=126379 mem=130651 [memory]   cosma: compute=126379 mem=294 [compute]
+  t=  8 (layer 8) CONV2D           baseline: compute=25839 mem=31616 [memory]   cosma: compute=25839 mem=256 [compute]
+  t=  9 (layer 9) CONV2D           baseline: compute=116279 mem=127505 [memory]   cosma: compute=116279 mem=1152 [compute]
+  t= 13 (layer 13) CONV2D           baseline: compute=38759 mem=47425 [memory]   cosma: compute=38759 mem=384 [compute]
+  t= 14 (layer 14) CONV2D           baseline: compute=116279 mem=127505 [memory]   cosma: compute=116279 mem=1152 [compute]
+  t= 18 (layer 18) CONV2D           baseline: compute=51679 mem=63233 [memory]   cosma: compute=51679 mem=512 [compute]
+  t= 19 (layer 19) CONV2D           baseline: compute=116279 mem=127505 [memory]   cosma: compute=116279 mem=1152 [compute]
+  t= 23 (layer 23) CONV2D           baseline: compute=64599 mem=79041 [memory]   cosma: compute=64599 mem=640 [compute]
+  t= 24 (layer 24) CONV2D           baseline: compute=116279 mem=127505 [memory]   cosma: compute=116279 mem=1152 [compute]
+  t= 28 (layer 28) CONV2D           baseline: compute=77519 mem=94849 [memory]   cosma: compute=77519 mem=768 [compute]
+  t= 29 (layer 29) CONV2D           baseline: compute=116279 mem=127505 [memory]   cosma: compute=116279 mem=1152 [compute]
+  t= 33 (layer 33) CONV2D           baseline: compute=90439 mem=110657 [memory]   cosma: compute=90439 mem=896 [compute]
+  t= 34 (layer 34) CONV2D           baseline: compute=116279 mem=127505 [memory]   cosma: compute=116279 mem=1152 [compute]
+  t= 38 (layer 38) CONV2D           baseline: compute=103359 mem=126465 [memory]   cosma: compute=103359 mem=1024 [compute]
+  t= 42 (layer 42) CONV2D           baseline: compute=14047 mem=16193 [memory]   cosma: compute=14047 mem=512 [compute]
+  t= 43 (layer 43) CONV2D           baseline: compute=31607 mem=32977 [memory]   cosma: compute=31607 mem=1152 [compute]
+  t= 47 (layer 47) CONV2D           baseline: compute=17559 mem=20241 [memory]   cosma: compute=17559 mem=640 [compute]
+  t= 48 (layer 48) CONV2D           baseline: compute=31607 mem=32977 [memory]   cosma: compute=31607 mem=1152 [compute]
+  t= 52 (layer 52) CONV2D           baseline: compute=21071 mem=24289 [memory]   cosma: compute=21071 mem=768 [compute]
+  t= 53 (layer 53) CONV2D           baseline: compute=31607 mem=32977 [memory]   cosma: compute=31607 mem=1152 [compute]
+  t= 57 (layer 57) CONV2D           baseline: compute=24583 mem=28337 [memory]   cosma: compute=24583 mem=896 [compute]
+  t= 58 (layer 58) CONV2D           baseline: compute=31607 mem=32977 [memory]   cosma: compute=31607 mem=1152 [compute]
+  t= 62 (layer 62) CONV2D           baseline: compute=28095 mem=32385 [memory]   cosma: compute=28095 mem=1024 [compute]
+  t= 63 (layer 63) CONV2D           baseline: compute=31607 mem=32977 [memory]   cosma: compute=31607 mem=1152 [compute]
+  t= 67 (layer 67) CONV2D           baseline: compute=31607 mem=36433 [memory]   cosma: compute=31607 mem=1152 [compute]
+  t= 68 (layer 68) CONV2D           baseline: compute=31607 mem=32977 [memory]   cosma: compute=31607 mem=1152 [compute]
+  t= 72 (layer 72) CONV2D           baseline: compute=35119 mem=40481 [memory]   cosma: compute=35119 mem=1280 [compute]
+  t= 73 (layer 73) CONV2D           baseline: compute=31607 mem=32977 [memory]   cosma: compute=31607 mem=1152 [compute]
+  t= 77 (layer 77) CONV2D           baseline: compute=38631 mem=44529 [memory]   cosma: compute=38631 mem=1408 [compute]
+  t= 78 (layer 78) CONV2D           baseline: compute=31607 mem=32977 [memory]   cosma: compute=31607 mem=1152 [compute]
+  t= 82 (layer 82) CONV2D           baseline: compute=42143 mem=48577 [memory]   cosma: compute=42143 mem=1536 [compute]
+  t= 83 (layer 83) CONV2D           baseline: compute=31607 mem=32977 [memory]   cosma: compute=31607 mem=1152 [compute]
+  t= 87 (layer 87) CONV2D           baseline: compute=45655 mem=52625 [memory]   cosma: compute=45655 mem=1664 [compute]
+  t= 88 (layer 88) CONV2D           baseline: compute=31607 mem=32977 [memory]   cosma: compute=31607 mem=1152 [compute]
+  t= 92 (layer 92) CONV2D           baseline: compute=49167 mem=56673 [memory]   cosma: compute=49167 mem=1792 [compute]
+  t= 93 (layer 93) CONV2D           baseline: compute=31607 mem=32977 [memory]   cosma: compute=31607 mem=1152 [compute]
+  t= 97 (layer 97) CONV2D           baseline: compute=52679 mem=60721 [memory]   cosma: compute=52679 mem=1920 [compute]
+  t= 98 (layer 98) CONV2D           baseline: compute=31607 mem=32977 [memory]   cosma: compute=31607 mem=1152 [compute]
+  t=102 (layer 102) CONV2D           baseline: compute=112383 mem=116993 [memory]   cosma: compute=112383 mem=4096 [compute]
+Saved SPM occupancy comparison to /data/grizos/Scale-Sim-SPM/cosma/spm_plots/_exported_densenet121-tflite-float_32x32_8232kb_cosma_native.png
+  non-compulsory bytes: 0, DRAM reduction: 93.8%, speedup: 1.0748x
+
+--- Budget: 8232.0 KB ---
+combo               status   total_non_compulsory_access_bytes  dram_traffic_reduction_pct  speedup  error
+------------------  -------  ---------------------------------  --------------------------  -------  -----
+default+belady      Optimal  0                                  93.83                       1.0748        
+default+ilp_greedy  Optimal  0                                  93.83                       1.0748        
+mpmf+belady         Optimal  0                                  93.83                       1.0748        
+mpmf+ilp_greedy     Optimal  0                                  93.83                       1.0748        
+cosma_native        Optimal  0                                  93.83                       1.0748        
+
+Wrote 15 rows to /data/grizos/Scale-Sim-SPM/cosma/results/_exported_densenet121-tflite-float_32x32_paper_baselines.csv
+Wrote full run log to /data/grizos/Scale-Sim-SPM/cosma/logs/_exported_densenet121-tflite-float_32x32_paper_baselines.log

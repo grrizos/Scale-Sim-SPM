@@ -1,0 +1,15 @@
+model: cosma/_exported/InceptionResNetV2/model.json
+spm_budget_mb: 3.0000
+============================================================
+
+Traceback (most recent call last):
+  File "/home/george/Desktop/SCALE-Sim/onsram/run_onsram.py", line 577, in _run_and_log
+    result = run_onsram(model_json_path, memory_budget_bytes, verbose=True)
+  File "/home/george/Desktop/SCALE-Sim/onsram/run_onsram.py", line 232, in run_onsram
+    spm_plan = pinning.build_spm_plan(tensors, resident_action, memory_budget_bytes)
+  File "/home/george/Desktop/SCALE-Sim/onsram/onsram_helpers/pinning.py", line 188, in build_spm_plan
+    return place_tensors(tensors, resident_action, memory_budget_bytes)
+  File "/home/george/Desktop/SCALE-Sim/onsram/onsram_helpers/placement.py", line 133, in place_tensors
+    raise OnsramPlacementError(
+onsram_helpers.placement.OnsramPlacementError: place_tensors(): tensor 273's episode [107,110] needs 443904 bytes but no gap fits in the 3145728-byte budget against time-overlapping placed episodes [(0, 1254400), (0, 1254400), (1568000, 1568000)] -- a real placement/fragmentation failure of this Best-Fit-Decreasing heuristic (general dynamic storage allocation is NP-hard; see this module's docstring), not necessarily a bug in the pinning decision itself, which only checked that the *total* bytes of overlapping tensors fit, not whether they're contiguously placeable.
+
