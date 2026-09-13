@@ -33,6 +33,7 @@ Existing, unmodified building blocks reused:
   run_cosma.run_cosma()  -- optional 5th "cosma_native" comparison row
 """
 import argparse
+import contextlib
 import csv
 import functools
 import os
@@ -50,9 +51,12 @@ from helpers import belady_policy
 from helpers import ilp_greedy_policy
 from helpers import tflite_arena_allocator
 import run_cosma
+import visualize_spm
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_CONFIG = os.path.join(os.path.dirname(HERE), 'configs', 'scale.cfg')
+DEFAULT_RESULTS_DIR = os.path.join(HERE, 'results')
+DEFAULT_LOGS_DIR = os.path.join(HERE, 'logs')
 
 CONV_LIKE_OPS = ('CONV2D', 'DEPTHWISE_CONV2D')
 
@@ -86,6 +90,52 @@ def _start_heartbeat(label: str) -> threading.Event:
 
     threading.Thread(target=_beat, daemon=True).start()
     return stop
+
+
+def _model_name(model_json_path: str) -> str:
+    """Same short-name convention as run_experiments.py's own
+    _model_name() / visualize_spm.default_out_path()'s inline logic --
+    duplicated locally (see module docstring's isolation rationale), used
+    to build default log/CSV filenames that agree with the plot filenames
+    visualize_spm.default_out_path() already produces for this model."""
+    parent = os.path.basename(os.path.dirname(os.path.abspath(model_json_path)))
+    stem = os.path.splitext(os.path.basename(model_json_path))[0]
+    return parent if parent and parent != 'cosma' else stem
+
+
+def _array_dims_tag(config_path: str) -> str:
+    """'<ArrayHeight>x<ArrayWidth>' from a scale.cfg -- duplicate of
+    run_cosma.py's own tag (see module docstring's isolation rationale),
+    used to keep default log/CSV/plot filenames from silently overwriting
+    each other across different array configs."""
+    from scalesim.scale_config import scale_config
+    config = scale_config()
+    config.read_conf_file(config_path)
+    arr_row, arr_col = config.get_array_dims()
+    return f"{arr_row}x{arr_col}"
+
+
+class _Tee:
+    """
+    Writes to both a live stream (the real terminal) and a log file,
+    flushing both after every write -- unlike run_experiments.py's own
+    _run_and_log() (which redirects to file only, to avoid flooding a
+    multi-combination terminal sweep), this file's own output is wanted
+    live AND saved every time, so this duplicates rather than redirects.
+    """
+    def __init__(self, live_stream, log_file):
+        self.live_stream = live_stream
+        self.log_file = log_file
+
+    def write(self, s):
+        self.live_stream.write(s)
+        self.live_stream.flush()
+        self.log_file.write(s)
+        self.log_file.flush()
+
+    def flush(self):
+        self.live_stream.flush()
+        self.log_file.flush()
 
 
 def _default_bandwidth_words_per_cycle(config_path: str) -> float:
@@ -203,7 +253,11 @@ def run_paper_baseline(nodes, tensors, model_json_path: str, config_path: str,
                         layer_stats: dict, bandwidth_bytes_per_cycle: float,
                         ilp_greedy_time_limit_sec: float = 10,
                         ilp_greedy_solver: str = 'cbc',
-                        verbose: bool = True) -> dict:
+                        verbose: bool = True,
+                        combo: str = None,
+                        baseline_action: dict = None,
+                        array_tag: str = None,
+                        save_plot: bool = True) -> dict:
     """
     Runs ONE (schedule, policy) combination end-to-end:
     replacement_engine.simulate_replacement() ->
@@ -219,6 +273,15 @@ def run_paper_baseline(nodes, tensors, model_json_path: str, config_path: str,
     (budget below what this schedule/policy can achieve) -- callers
     sweeping many combinations should catch both, see
     run_all_paper_baselines().
+
+    save_plot: if True (default) and combo/baseline_action are given,
+    saves a baseline-vs-plan occupancy PNG via visualize_spm's own
+    generic render_comparison() -- same plotting code run_cosma.py's own
+    cosma_native row uses, reused here since this combo's spm_plan/
+    resident_action are in the identical generic shape. Filed under
+    cosma/spm_plots/, tagged with `combo` (e.g. 'default+belady') instead
+    of run_cosma.py's 'S'/'D' schedule tag, so all 5 rows' plots for the
+    same (model, budget) sit side by side without overwriting each other.
     """
     victims_fn = choose_victims_fn
     if choose_victims_fn is ilp_greedy_policy.choose_victims:
@@ -238,25 +301,41 @@ def run_paper_baseline(nodes, tensors, model_json_path: str, config_path: str,
     accounting = _account(nodes, tensors, resident_action, schedule,
                            layer_stats, plan_stats, bandwidth_bytes_per_cycle)
     summary = {'status': 'Optimal', 'memory_budget_bytes': memory_budget_bytes,
-               'spm_plan': spm_plan, 'resident_action': resident_action}
+               'spm_plan': spm_plan, 'resident_action': resident_action,
+               # dict(schedule), not the {t: t} identity render_comparison()
+               # falls back to -- under the 'mpmf' schedule t != layer id,
+               # so the fallback would mislabel the plot's x-axis.
+               'schedule_layer_at_t': dict(schedule)}
     summary.update(accounting)
     if verbose:
         print(f"  non-compulsory bytes: {summary['total_non_compulsory_access_bytes']}, "
               f"DRAM reduction: {summary['dram_traffic_reduction_pct']:.1f}%, "
               f"speedup: {summary['speedup']:.4f}x")
+
+    if save_plot and combo is not None and baseline_action is not None:
+        out_path = visualize_spm.default_out_path(
+            model_json_path, memory_budget_bytes, array_tag=array_tag, schedule_tag=combo)
+        visualize_spm.render_comparison(
+            nodes, tensors, baseline_action, summary, memory_budget_bytes, out_path,
+            title=f"{os.path.basename(model_json_path)} -- {combo} @ "
+                  f"{memory_budget_bytes / 1024:.2f} KB")
+        if verbose:
+            print(f"  saved plot to {out_path}")
+
     return summary
 
 
 def run_all_paper_baselines(model_json_path: str, config_path: str = DEFAULT_CONFIG,
                              memory_budget_bytes: int = 128 * 1024,
                              include_cosma_native: bool = True,
-                             mpmf_time_limit_sec: float = None,
+                             ilp_time_limit_sec: float = None,
                              ilp_greedy_time_limit_sec: float = 10,
                              solver: str = 'cbc',
                              exporter: str = model_resolver.DEFAULT_EXPORTER,
                              export_dir: str = model_resolver.DEFAULT_EXPORT_DIR,
                              force_export: bool = False,
-                             verbose: bool = True) -> dict:
+                             verbose: bool = True,
+                             save_plots: bool = True) -> dict:
     """
     Loads the graph once, computes layer_stats via baseline.run_baseline()
     once (schedule-independent -- reused across all combinations below,
@@ -277,6 +356,17 @@ def run_all_paper_baselines(model_json_path: str, config_path: str = DEFAULT_CON
     same "one bad combination shouldn't abort the batch" spirit as
     run_experiments.py's own _error_row() pattern.
 
+    ilp_time_limit_sec: applied to BOTH real ILP solves in this function
+    -- the MPMF schedule solve (cosma_Ilp.compute_true_mpmf_bytes()) and,
+    if include_cosma_native, COSMA's own full joint ILP solve (inside
+    run_cosma.run_cosma()). Previously only bounded the former, leaving
+    the cosma_native row's solve silently unbounded regardless of this
+    argument -- confirmed directly: a real run left it running 500+s with
+    no limit applied while --time-limit was set to 1500s. Does NOT apply
+    to ilp_greedy_time_limit_sec's many small per-decision solves, which
+    intentionally stay on their own separate, much shorter default (see
+    that argument's own docstring).
+
     Returns {'default+belady', 'default+ilp_greedy', 'mpmf+belady',
     'mpmf+ilp_greedy'[, 'cosma_native']: summary dict (or
     {'status': 'ERROR', 'error': str} on failure)}.
@@ -287,6 +377,12 @@ def run_all_paper_baselines(model_json_path: str, config_path: str = DEFAULT_CON
     cosma_Ilp.assert_tensors_fit_budget(tensors, memory_budget_bytes)
 
     bandwidth_bytes_per_cycle = _default_bandwidth_words_per_cycle(config_path)
+    # Structural, schedule-independent -- same one baseline_action used for
+    # every combo's plot below (mirrors layer_stats's own "compute once,
+    # reuse across combos" pattern), and for the cosma_native plot's own
+    # baseline panel (run_cosma.py computes an identical one internally).
+    baseline_action = visualize_spm.compute_baseline_resident_action(nodes, tensors)
+    array_tag = _array_dims_tag(config_path)
 
     if verbose:
         print(f"Running SCALE-Sim baseline for {model_json_path} ...")
@@ -313,7 +409,7 @@ def run_all_paper_baselines(model_json_path: str, config_path: str = DEFAULT_CON
     heartbeat_stop = _start_heartbeat("MPMF schedule ILP solve")
     try:
         _, mpmf_tensor_sched = cosma_Ilp.compute_true_mpmf_bytes(
-            nodes, tensors, time_limit_sec=mpmf_time_limit_sec, solver=solver, msg=verbose)
+            nodes, tensors, time_limit_sec=ilp_time_limit_sec, solver=solver, msg=verbose)
     finally:
         heartbeat_stop.set()
     mpmf_sched = schedule_variants.mpmf_operator_schedule(nodes, tensors, mpmf_tensor_sched)
@@ -336,7 +432,9 @@ def run_all_paper_baselines(model_json_path: str, config_path: str = DEFAULT_CON
                     memory_budget_bytes, policy_fn, layer_stats,
                     bandwidth_bytes_per_cycle,
                     ilp_greedy_time_limit_sec=ilp_greedy_time_limit_sec,
-                    ilp_greedy_solver=solver, verbose=verbose)
+                    ilp_greedy_solver=solver, verbose=verbose,
+                    combo=combo, baseline_action=baseline_action,
+                    array_tag=array_tag, save_plot=save_plots)
             except (tflite_arena_allocator.TfliteArenaAllocationError,
                     replacement_engine.ReplacementInfeasible) as e:
                 results[combo] = {'status': 'ERROR', 'error': f"{type(e).__name__}: {e}"}
@@ -350,11 +448,23 @@ def run_all_paper_baselines(model_json_path: str, config_path: str = DEFAULT_CON
             print("\n=== cosma_native ===")
         heartbeat_stop = _start_heartbeat(f"cosma_native @ {memory_budget_bytes} bytes")
         try:
+            # plot_out_path override so this plot is tagged 'cosma_native'
+            # like its 4 sibling combos' plots, instead of run_cosma.py's
+            # own generic 'S'/'D' schedule tag (this file never exposes
+            # free_schedule, so it'd always be 'S' -- less identifiable
+            # sitting next to 'default+belady' etc. in the same directory).
+            cosma_native_plot_path = (
+                visualize_spm.default_out_path(
+                    model_json_path, memory_budget_bytes,
+                    array_tag=array_tag, schedule_tag='cosma_native')
+                if save_plots else None)
             results['cosma_native'] = run_cosma.run_cosma(
                 model_json_path=model_json_path, config_path=config_path,
                 memory_budget_bytes=memory_budget_bytes, layer_stats=layer_stats,
                 bandwidth_bytes_per_cycle=bandwidth_bytes_per_cycle,
-                verbose=verbose, save_plot=False, solver=solver)
+                ilp_time_limit_sec=ilp_time_limit_sec,
+                verbose=verbose, save_plot=save_plots,
+                plot_out_path=cosma_native_plot_path, solver=solver)
             if verbose:
                 r = results['cosma_native']
                 print(f"  non-compulsory bytes: {r['total_non_compulsory_access_bytes']}, "
@@ -404,12 +514,15 @@ if __name__ == '__main__':
     parser.add_argument('--export-dir', default=model_resolver.DEFAULT_EXPORT_DIR)
     parser.add_argument('--force-export', action='store_true')
     parser.add_argument('--time-limit', type=float, default=1500,
-                         help='Time limit (seconds) for the MPMF schedule ILP solve. '
-                              'Default: 1500s -- with solver=gurobi (the default), a solve '
-                              'that hits this limit still returns its best feasible '
-                              'incumbent instead of failing (see cosma_Ilp.solve()\'s '
-                              'has_feasible_incumbent docstring). Pass a larger value, or '
-                              'edit this default back to None, for unbounded.')
+                         help='Time limit (seconds) applied to BOTH real ILP solves: the '
+                              'MPMF schedule solve and, unless --no-cosma-native, the '
+                              'cosma_native row\'s own full joint COSMA ILP solve. Default: '
+                              '1500s -- with solver=gurobi (the default), a solve that hits '
+                              'this limit still returns its best feasible incumbent instead '
+                              'of failing (see cosma_Ilp.solve()\'s has_feasible_incumbent '
+                              'docstring). Does NOT apply to --ilp-greedy-time-limit\'s many '
+                              'small per-decision solves. Pass a larger value, or edit this '
+                              'default back to None, for unbounded.')
     parser.add_argument('--ilp-greedy-time-limit', type=float, default=10,
                          help='Per-decision-point time limit (seconds) for the local '
                               'ILP-greedy replacement policy solve. Default: 10.')
@@ -418,40 +531,71 @@ if __name__ == '__main__':
                               '(default: cbc, no license needed). See cosma_Ilp.solve().')
     parser.add_argument('--no-cosma-native', action='store_true',
                          help="Skip the COSMA-native comparison row (run_cosma.run_cosma()).")
+    parser.add_argument('--no-plots', action='store_true',
+                         help="Skip saving each combination's baseline-vs-plan occupancy PNG "
+                              "(saved to cosma/spm_plots/ by default, one per (budget, combo)).")
     parser.add_argument('--out-csv', default=None,
-                         help='Path to write a combined results CSV across all budgets.')
+                         help='Path to write a combined results CSV across all budgets. '
+                              'Defaults to cosma/results/<model>_<array>_paper_baselines.csv -- '
+                              'always written, this only lets you pick where.')
+    parser.add_argument('--logs-dir', default=None,
+                         help='Directory to save the full run log (everything printed, '
+                              'including the ILP solvers\' own native output) to. Defaults to '
+                              'cosma/logs/ -- always written, this only lets you pick where.')
+    parser.add_argument('--no-logs', action='store_true',
+                         help='Skip saving the run log; print only.')
     args = parser.parse_args()
 
-    all_rows = []
-    for budget_kb in args.budgets_kb:
-        results = run_all_paper_baselines(
-            model_json_path=args.model_json, config_path=args.config,
-            memory_budget_bytes=int(budget_kb * 1024),
-            include_cosma_native=not args.no_cosma_native,
-            mpmf_time_limit_sec=args.time_limit,
-            ilp_greedy_time_limit_sec=args.ilp_greedy_time_limit,
-            solver=args.solver, exporter=args.exporter, export_dir=args.export_dir,
-            force_export=args.force_export, verbose=True)
-        print_comparison_table(results, budget_kb)
-        for combo, r in results.items():
-            all_rows.append({
-                'model': args.model_json, 'budget_kb': budget_kb, 'combo': combo,
-                'status': r.get('status', 'Optimal'),
-                'total_non_compulsory_access_bytes': r.get('total_non_compulsory_access_bytes', ''),
-                'dram_traffic_reduction_pct': r.get('dram_traffic_reduction_pct', ''),
-                'speedup': r.get('speedup', ''),
-                'error': r.get('error', ''),
-            })
+    array_tag = _array_dims_tag(args.config)
+    name_tag = f"{_model_name(args.model_json)}_{array_tag}_paper_baselines"
 
-    if args.out_csv:
-        out_dir = os.path.dirname(args.out_csv)
-        if out_dir:
-            os.makedirs(out_dir, exist_ok=True)
-        with open(args.out_csv, 'w', newline='') as f:
-            writer = csv.DictWriter(f, fieldnames=[
-                'model', 'budget_kb', 'combo', 'status',
-                'total_non_compulsory_access_bytes', 'dram_traffic_reduction_pct',
-                'speedup', 'error'])
-            writer.writeheader()
-            writer.writerows(all_rows)
-        print(f"\nWrote {len(all_rows)} rows to {args.out_csv}")
+    log_path = None
+    if not args.no_logs:
+        logs_dir = args.logs_dir or DEFAULT_LOGS_DIR
+        os.makedirs(logs_dir, exist_ok=True)
+        log_path = os.path.join(logs_dir, f"{name_tag}.log")
+
+    log_file = open(log_path, 'w', buffering=1) if log_path else None
+    try:
+        stdout_target = _Tee(sys.stdout, log_file) if log_file is not None else sys.stdout
+        with contextlib.redirect_stdout(stdout_target):
+            all_rows = []
+            for budget_kb in args.budgets_kb:
+                results = run_all_paper_baselines(
+                    model_json_path=args.model_json, config_path=args.config,
+                    memory_budget_bytes=int(budget_kb * 1024),
+                    include_cosma_native=not args.no_cosma_native,
+                    ilp_time_limit_sec=args.time_limit,
+                    ilp_greedy_time_limit_sec=args.ilp_greedy_time_limit,
+                    solver=args.solver, exporter=args.exporter, export_dir=args.export_dir,
+                    force_export=args.force_export, verbose=True,
+                    save_plots=not args.no_plots)
+                print_comparison_table(results, budget_kb)
+                for combo, r in results.items():
+                    all_rows.append({
+                        'model': args.model_json, 'budget_kb': budget_kb, 'combo': combo,
+                        'status': r.get('status', 'Optimal'),
+                        'total_non_compulsory_access_bytes':
+                            r.get('total_non_compulsory_access_bytes', ''),
+                        'dram_traffic_reduction_pct': r.get('dram_traffic_reduction_pct', ''),
+                        'speedup': r.get('speedup', ''),
+                        'error': r.get('error', ''),
+                    })
+
+            out_csv = args.out_csv or os.path.join(DEFAULT_RESULTS_DIR, f"{name_tag}.csv")
+            out_dir = os.path.dirname(out_csv)
+            if out_dir:
+                os.makedirs(out_dir, exist_ok=True)
+            with open(out_csv, 'w', newline='') as f:
+                writer = csv.DictWriter(f, fieldnames=[
+                    'model', 'budget_kb', 'combo', 'status',
+                    'total_non_compulsory_access_bytes', 'dram_traffic_reduction_pct',
+                    'speedup', 'error'])
+                writer.writeheader()
+                writer.writerows(all_rows)
+            print(f"\nWrote {len(all_rows)} rows to {out_csv}")
+            if log_path:
+                print(f"Wrote full run log to {log_path}")
+    finally:
+        if log_file is not None:
+            log_file.close()

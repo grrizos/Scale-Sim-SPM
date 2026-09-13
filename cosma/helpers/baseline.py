@@ -340,7 +340,7 @@ def run_baseline(model_json_path: str, config_path: str,
 def run_cosma_aware(model_json_path: str, config_path: str, resident_action: dict,
                      spm_plan: dict, tensors: dict, memory_budget_bytes: int,
                      topology_csv_path: str = None,
-                     verbose: bool = False,
+                     verbose: bool = True,
                      schedule: List[Tuple[int, int]] = None) -> Dict[int, dict]:
     """
     Same per-layer numbers as run_baseline(), except driven by COSMA's
