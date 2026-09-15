@@ -54,8 +54,8 @@ from scalesim.memory.cosma_resident_buffers import (
     CosmaResidentReadBuffer, CosmaResidentWriteBuffer)
 
 from .topology_builder import build_topology
-from .graph_builder import compute_size_bytes
-from .spm_allocator import SpmAllocator
+from spm_common.graph_builder import compute_size_bytes
+from spm_common.spm_allocator import SpmAllocator
 
 # cosma/ (one level up from this file's own helpers/ directory) -- kept
 # pointing there, not at helpers/, so the default paths below (and every

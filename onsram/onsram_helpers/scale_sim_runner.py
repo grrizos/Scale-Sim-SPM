@@ -10,10 +10,11 @@ cosma_resident_buffers.py) must never be able to change OnSRAM's simulated
 numbers, and a change here must never affect COSMA. Only the underlying
 scalesim/ engine itself (scale_config, topologies, layouts,
 single_layer_sim, double_buffered_scratchpad) and the generic, dict-shaped
-helpers.spm_allocator.SpmAllocator (already relied on throughout this port
-for physical-consistency checking, and used the identical way by COSMA's
-own baseline.py -- reusing it here is not new coupling) are shared; the
-actual layer-simulation orchestration below is OnSRAM's own copy.
+spm_common.spm_allocator.SpmAllocator (already relied on throughout this
+port for physical-consistency checking, and used the identical way by
+COSMA's own baseline.py -- both import the one shared module directly,
+since it has no paper-specific logic at all) are shared; the actual
+layer-simulation orchestration below is OnSRAM's own copy.
 
 Only CONV2D/DEPTHWISE_CONV2D layers are actually simulated by SCALE-Sim
 (see onsram_helpers/topology.py) -- every other model.json layer id (ADD,
@@ -56,7 +57,7 @@ from scalesim.memory.double_buffered_scratchpad_mem import double_buffered_scrat
 from .topology import build_onsram_topology
 from .resident_buffers import OnsramResidentReadBuffer, OnsramResidentWriteBuffer
 
-from helpers.spm_allocator import SpmAllocator  # COSMA's, unmodified -- see module docstring
+from spm_common.spm_allocator import SpmAllocator  # generic, paper-agnostic -- see module docstring
 
 _ONSRAM_HELPERS_DIR = os.path.dirname(os.path.abspath(__file__))
 _ONSRAM_DIR = os.path.dirname(_ONSRAM_HELPERS_DIR)
@@ -82,10 +83,7 @@ def _tensor_size_bytes(shape, dtype: str) -> int:
 
 def _activation_input_tensor_id(layer: dict):
     """
-    The tensor id of this layer's activation input (as opposed to
-    weight/bias/network-input, all marked inputs_from==-1): prefers the
-    first input actually produced by another layer; a layer with no such
-    input falls back to inputs[0] (e.g. the network's raw input tensor).
+    Returns the tensor id of the layer's activation input
     Returns None if the layer has no inputs at all.
     """
     inputs = layer.get('inputs', [])
@@ -303,7 +301,7 @@ def _run_layers(model_json_path: str, config_path: str,
             verbose, resident_action=resident_action)
 
     if allocator is not None:
-        # Deliberately unconditional, not gated on `verbose` -- that flag
+        # Deliberately unconditional, not gated on `verbose`, that flag
         # also enables SCALE-Sim's own internal per-layer tqdm progress
         # bars, which would flood the terminal with dozens of bars just to
         # surface this one cheap, already-computed summary line.

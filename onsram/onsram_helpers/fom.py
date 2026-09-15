@@ -8,10 +8,10 @@ confirmed against the real OnSRAM paper's Eq. 1 in
 onsram/docs/onsram_integration_plan.md section 4, not the ad-hoc
 `calculate_fom` the reference's own active pipeline actually calls).
 
-COSMA's cosma/helpers/graph_builder.py's Node dataclass (id, op,
-activation_inputs, weight_inputs, outputs) deliberately does not carry
-input_shape/output_shape/params -- fields the reference's FLOPs/reuse/
-node-type logic all need. Rather than touching graph_builder.py, this
+spm_common/graph_builder.py's Node dataclass (id, op, activation_inputs,
+weight_inputs, outputs) deliberately does not carry input_shape/
+output_shape/params -- fields the reference's FLOPs/reuse/node-type logic
+all need. Rather than touching graph_builder.py, this
 module separately re-reads the same model.json (load_layer_meta below)
 for just those fields. All OnSRAM-specific derived state (flops, reuse
 metadata, node type, fom) lives in plain dicts keyed by id here -- COSMA's

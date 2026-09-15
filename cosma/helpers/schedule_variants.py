@@ -86,9 +86,13 @@ def mpmf_operator_schedule(nodes: Dict[int, object], tensors: Dict[int, object],
 
 if __name__ == '__main__':
     import os
-    from . import graph_builder
+    import sys
 
     here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # cosma/
+    repo_root = os.path.dirname(here)
+    if repo_root not in sys.path:
+        sys.path.insert(0, repo_root)
+    from spm_common import graph_builder
 
     # toy_spill_model.json: hand-derived AND empirically confirmed (during
     # this module's own development -- see docs/baseline_construction.md's

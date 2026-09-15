@@ -153,7 +153,7 @@ def place_tensors(tensors: Dict[int, object],
         if action in ('C', 'P'):
             spm_plan[(a, t)] = address_by_episode[(a, episode_start_of[(a, t)])]
 
-    from helpers.spm_allocator import SpmAllocator  # COSMA's, unmodified -- generic checker
+    from spm_common.spm_allocator import SpmAllocator  # generic, paper-agnostic checker
     try:
         SpmAllocator(tensors, spm_plan, resident_action, memory_budget_bytes).replay_all()
     except Exception as e:

@@ -60,13 +60,21 @@ run_onsram.py now wires OnSRAM's pinning decisions into real SCALE-Sim via COSMA
 
 COSMA already has a recent precedent for exactly this kind of reuse: the `run_paper_baselines.py` effort (Belady and ILP-greedy replacement policies, neither of them COSMA's own algorithm) already reuses the same generic infrastructure listed below, without ever editing COSMA's own files. We follow the identical pattern.
 
-**Reused as-is, unmodified:**
-| From COSMA | What it does | Why it's safe to reuse |
+**Reused as-is, unmodified** (updated post-implementation: `graph_builder.py`/
+`model_resolver.py`/`spm_allocator.py` were later promoted out of
+`cosma/helpers/` into `spm_common/`, a repo-root sibling of both `cosma/`
+and `onsram/`, precisely because this table's own "why it's safe to reuse"
+column is true of them — see `spm_common/__init__.py`. `topology_builder.py`
+and `baseline.py`'s `run_cosma_aware()` turned out NOT to fit that
+description — driving SCALE-Sim is where the two papers' numbers must stay
+isolated — so despite the plan below, OnSRAM ended up with its own
+self-contained duplicates instead, `onsram_helpers/topology.py` and
+`scale_sim_runner.py`; see those modules' own docstrings):
+| Module | What it does | Why it's safe to reuse |
 |---|---|---|
-| `cosma/helpers/graph_builder.py`'s `load_graph()` | Parses `model.json` into `nodes`/`tensors` dicts | Zero COSMA-specific logic; OnSRAM's own JSON schema is a subset of `model.json`'s |
-| `cosma/helpers/model_resolver.py` / `topology_builder.py` | `.tflite` → `model.json` export/caching, SCALE-Sim topology CSV generation | Generic utilities, no ILP/COSMA coupling |
-| `cosma/helpers/spm_allocator.py`'s `SpmAllocator` | Verifies/replays a `{(tensor,t): address}` placement against a byte budget | Takes only plain dicts and a budget — no assumptions about *how* the plan was produced |
-| `cosma/helpers/baseline.py`'s `run_cosma_aware()` | Drives a real SCALE-Sim simulation pass given a `resident_action`/`spm_plan`/`schedule` | Same generic dict shapes as `SpmAllocator` — this is what gives OnSRAM real, engine-verified cycle counts and DRAM bytes once it produces a plan in this shape, replacing OnSRAM's own closed-form latency formulas entirely |
+| `spm_common/graph_builder.py`'s `load_graph()` | Parses `model.json` into `nodes`/`tensors` dicts | Zero algorithm-specific logic; OnSRAM's own JSON schema is a subset of `model.json`'s |
+| `spm_common/model_resolver.py` | `.tflite` → `model.json` export/caching | Generic utility, no ILP/COSMA coupling |
+| `spm_common/spm_allocator.py`'s `SpmAllocator` | Verifies/replays a `{(tensor,t): address}` placement against a byte budget | Takes only plain dicts and a budget — no assumptions about *how* the plan was produced |
 
 **Never touched:** `cosma/helpers/cosma_Ilp.py` (COSMA's ILP) and `cosma/run_cosma.py` (COSMA's orchestration) — both under active, separate development. This new work only ever imports their sibling modules' public functions, never these two.
 
@@ -94,7 +102,12 @@ onsram/
                                             added once run_onsram.py works)
 ```
 
-Run with `PYTHONPATH` covering both the repo root and `cosma/` (e.g. `PYTHONPATH=../cosma:..:.` from inside `onsram/`), so `from helpers import graph_builder, spm_allocator, baseline` resolves to COSMA's generic modules unmodified, alongside `from onsram_helpers import fom, pinning, scheduling` for the new logic.
+Superseded by the actual implementation: `run_onsram.py` inserts the repo
+root onto `sys.path` itself at import time (no `PYTHONPATH` env var
+needed), so `from spm_common import graph_builder, model_resolver` and
+`from spm_common.spm_allocator import SpmAllocator` resolve directly,
+alongside `from onsram_helpers import fom, pinning, scheduling, ...` for
+OnSRAM's own logic.
 
 ---
 

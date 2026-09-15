@@ -24,21 +24,25 @@ cosma/
 ├── run_experiments.py   entry point -- batch sweep, wraps run_cosma()
 ├── visualize_spm.py     entry point -- fast diagnostic (Pipeline B)
 ├── model.json, toy_*.json          input graphs (one real, two synthetic)
-├── helpers/              library modules -- only ever imported, never run directly
-│   ├── graph_builder.py       model.json -> nodes/tensors
-│   ├── topology_builder.py    model.json -> SCALE-Sim topology CSV
+├── helpers/              library modules, COSMA-specific -- only ever imported, never run directly
+│   ├── topology_builder.py    model.json -> SCALE-Sim topology CSV (COSMA's own copy -- see spm_common/__init__.py)
 │   ├── baseline.py            real SCALE-Sim driver
-│   ├── cosma_Ilp.py           the ILP itself
-│   └── model_resolver.py      .tflite -> model.json auto-export + cache
+│   └── cosma_Ilp.py           the ILP itself
 ├── docs/                  this file, ITERATION_HISTORY.md, STATUS.md, cosma_integration_plan.md
 ├── _exported/, results/, spm_plots/, logs/   generated/cached, gitignored
+
+../spm_common/            shared with onsram/, not COSMA-owned -- see spm_common/__init__.py
+├── graph_builder.py       model.json -> nodes/tensors
+├── model_resolver.py      .tflite -> model.json auto-export + cache
+└── spm_allocator.py       independent SPM-plan physical-validity replay
 ```
 
 Run everything from `cosma/` itself (not `cosma/docs/`) — the three entry
 points are the only files meant to be invoked directly; everything under
-`helpers/` is imported by them (`from helpers import graph_builder`, etc.)
-and isn't meant to be run on its own outside of quick debugging (see
-`ITERATION_HISTORY.md` §3 for those standalone debug commands).
+`helpers/` is imported by them (`from helpers import baseline`, etc., and
+`from spm_common import graph_builder` for the three genuinely shared
+modules) and isn't meant to be run on its own outside of quick debugging
+(see `ITERATION_HISTORY.md` §3 for those standalone debug commands).
 
 There are two separate pipelines in this repo: the full one
 (`run_cosma.py`), which is slow but produces real, SCALE-Sim-verified

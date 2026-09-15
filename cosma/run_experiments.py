@@ -46,10 +46,14 @@ import sys
 import threading
 import time
 
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+
 from helpers import baseline
 from helpers import cosma_Ilp
-from helpers import graph_builder
-from helpers import model_resolver
+from spm_common import graph_builder
+from spm_common import model_resolver
 import run_cosma
 
 HERE = os.path.dirname(os.path.abspath(__file__))

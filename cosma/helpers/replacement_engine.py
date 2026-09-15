@@ -165,8 +165,12 @@ if __name__ == '__main__':
             freed += tensors[a].size_bytes
         return victims
 
-    here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    from . import graph_builder
+    import sys
+    here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # cosma/
+    repo_root = os.path.dirname(here)
+    if repo_root not in sys.path:
+        sys.path.insert(0, repo_root)
+    from spm_common import graph_builder
     nodes, tensors = graph_builder.load_graph(os.path.join(here, 'toy_spill_model.json'))
     schedule = [(0, 0), (1, 1), (2, 2), (3, 3)]  # default schedule
 

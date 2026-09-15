@@ -3,8 +3,8 @@
 Greedy whole-interval-only SPM pinning + Overwrite Optimization, ported
 from /home/george/trim/spm_management/onsram_weights.py's
 decide_spm_pinning(), plus construction of the resident_action/spm_plan
-dict shapes SpmAllocator (cosma/helpers/spm_allocator.py, reused as a
-generic physical-consistency checker) expects. Address assignment itself
+dict shapes SpmAllocator (spm_common/spm_allocator.py, imported directly
+as a generic physical-consistency checker) expects. Address assignment itself
 (build_spm_plan) uses OnSRAM's own placement algorithm -- see
 onsram_helpers/placement.py's module docstring for why.
 
@@ -21,7 +21,7 @@ everywhere, with one explicit, narrow exception:
 
 **Overwrite Optimization's address hand-off.** SpmAllocator has no
 concept of two different tensor ids sharing one address at the same
-timestep (cosma/helpers/spm_allocator.py's _allocate() rejects any
+timestep (spm_common/spm_allocator.py's _allocate() rejects any
 address overlap outright), and this port's own placement algorithm
 (onsram_helpers/placement.py) has no in-place/aliasing buffer sharing
 either. So the only way to express "tensor A's buffer gets reused by
@@ -142,9 +142,9 @@ def build_resident_action(tensors: Dict[int, object], pinned: Dict[int, bool],
                            reclaimed_source_ids: Set[int]
                            ) -> Dict[Tuple[int, int], str]:
     """
-    Translates the whole-lifetime pinned/not-pinned decision into COSMA's
-    per-timestep resident_action vocabulary (confirmed against
-    cosma/helpers/spm_allocator.py's step() semantics directly): 'C' at
+    Translates the whole-lifetime pinned/not-pinned decision into the
+    shared per-timestep resident_action vocabulary (confirmed against
+    spm_common/spm_allocator.py's step() semantics directly): 'C' at
     the tensor's produced timestep, then 'P' at every subsequent
     timestep through last_used_at_ts INCLUSIVE (live_range) -- EXCEPT for
     tensors in `reclaimed_source_ids`, which vacate one timestep early

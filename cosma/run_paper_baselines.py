@@ -26,8 +26,8 @@ New building blocks used (all new, additive files from this same effort):
   helpers/tflite_arena_allocator.py -- WHERE (real TFLite placement algorithm)
 
 Existing, unmodified building blocks reused:
-  helpers/model_resolver.resolve_model_json()
-  helpers/graph_builder.load_graph()
+  spm_common/model_resolver.resolve_model_json()
+  spm_common/graph_builder.load_graph()
   helpers/baseline.run_baseline() / run_cosma_aware()
   helpers/cosma_Ilp.assert_tensors_fit_budget() / compute_true_mpmf_bytes()
   run_cosma.run_cosma()  -- optional 5th "cosma_native" comparison row
@@ -41,10 +41,14 @@ import sys
 import threading
 import time
 
-from helpers import graph_builder
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+
+from spm_common import graph_builder
 from helpers import baseline
 from helpers import cosma_Ilp
-from helpers import model_resolver
+from spm_common import model_resolver
 from helpers import schedule_variants
 from helpers import replacement_engine
 from helpers import belady_policy

@@ -10,21 +10,21 @@ for the full roadmap.
 
 COSMA and OnSRAM are two separate jobs that happen to sit on the same
 SCALE-Sim engine, not one depending on the other's code: graph parsing
-and physical-consistency checking reuse cosma/helpers/graph_builder.py
-and spm_allocator.py directly, since those are generic, algorithm-
-agnostic infrastructure (plain dicts in, plain dicts out, no assumption
-about how a plan was produced) already shared the same way by COSMA's
-own run_paper_baselines.py. Everything else is OnSRAM's own: the WHERE-
-placement step (onsram_helpers/placement.py -- Best-Fit-Decreasing,
-OnSRAM's own algorithm, not a borrowed one, see that module's docstring
-for why) and Phase D's entire SCALE-Sim-driving logic (a full,
-self-contained duplicate living in onsram_helpers/scale_sim_runner.py +
-topology.py + resident_buffers.py) -- a change to COSMA's own
-baseline.py/topology_builder.py/cosma_resident_buffers.py/
+and physical-consistency checking reuse spm_common/graph_builder.py and
+spm_allocator.py directly, since those are generic, algorithm-agnostic
+infrastructure (plain dicts in, plain dicts out, no assumption about how
+a plan was produced) that lives outside both cosma/ and onsram/ for
+exactly this reason -- see spm_common/__init__.py. Everything else is
+OnSRAM's own: the WHERE-placement step (onsram_helpers/placement.py --
+Best-Fit-Decreasing, OnSRAM's own algorithm, not a borrowed one, see that
+module's docstring for why) and Phase D's entire SCALE-Sim-driving logic
+(a full, self-contained duplicate living in onsram_helpers/
+scale_sim_runner.py + topology.py + resident_buffers.py) -- a change to
+COSMA's own baseline.py/topology_builder.py/cosma_resident_buffers.py/
 tflite_arena_allocator.py can never change OnSRAM's numbers, and vice
 versa.
 
-Pipeline: cosma/helpers/graph_builder.load_graph() -> onsram_helpers'
+Pipeline: spm_common/graph_builder.load_graph() -> onsram_helpers'
 FoM scoring -> BFS-DFS hybrid scheduling -> liveness analysis -> greedy
 whole-interval pinning (with Overwrite Optimization) -> OnSRAM's own
 resident_action/spm_plan dict shapes (the latter via
@@ -108,17 +108,12 @@ from typing import Tuple
 _ONSRAM_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.dirname(_ONSRAM_DIR)
 _COSMA_DIR = os.path.join(_REPO_ROOT, 'cosma')
-if _COSMA_DIR not in sys.path:
-    sys.path.insert(0, _COSMA_DIR)
-# onsram_helpers.scale_sim_runner imports scalesim directly (from
-# scalesim.scale_config import scale_config) -- that package lives at the
-# repo root, not under cosma/, so it needs its own sys.path entry too.
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-from helpers import graph_builder                    # COSMA's, unmodified
-from helpers import model_resolver                    # COSMA's, unmodified
-from helpers.spm_allocator import SpmAllocator        # COSMA's, unmodified
+from spm_common import graph_builder
+from spm_common import model_resolver
+from spm_common.spm_allocator import SpmAllocator
 
 from onsram_helpers import fom, scheduling, pinning, visualize, scale_sim_runner
 
@@ -189,9 +184,10 @@ def _start_heartbeat(label: str) -> threading.Event:
 def resolve_model_arg(model_arg: str) -> str:
     """
     Accepts a full path to a model.json, a .tflite path (resolved via
-    COSMA's own model_resolver.resolve_model_json(), reused unmodified),
-    or a bare model name that resolves to cosma/_exported/<name>/model.json
-    -- the export layout cosma/helpers/model_resolver.py itself produces.
+    spm_common's own model_resolver.resolve_model_json()), or a bare model
+    name that resolves to cosma/_exported/<name>/model.json -- the export
+    layout spm_common/model_resolver.py itself produces, still physically
+    cached under cosma/ (see that module's own DEFAULT_EXPORT_DIR comment).
     """
     if model_arg.endswith('.json'):
         return model_arg

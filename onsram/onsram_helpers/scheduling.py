@@ -5,7 +5,7 @@ BFS-DFS hybrid scheduling + liveness analysis, ported from
 schedule_nodes_bfs_dfs_hybrid() and analyze_liveness().
 
 Id-keyed translation of the reference's string-name-keyed graph, using
-COSMA's own field names (cosma/helpers/graph_builder.py): a Node's
+spm_common/graph_builder.py's field names: a Node's
 `activation_inputs` is already exactly "tensor ids produced by another
 layer" by construction, so (unlike the reference, which double-checks
 `producer in graph.nodes` while walking every input including weights)

@@ -46,6 +46,7 @@ spill/retrieve in this diagram.
 """
 import argparse
 import os
+import sys
 
 import matplotlib
 matplotlib.use('Agg')
@@ -53,10 +54,14 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from matplotlib.lines import Line2D
 
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+
 from helpers import cosma_Ilp
-from helpers import graph_builder
-from helpers import model_resolver
-from helpers import spm_allocator
+from spm_common import graph_builder
+from spm_common import model_resolver
+from spm_common import spm_allocator
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_MODEL_JSON = os.path.join(HERE, 'model.json')

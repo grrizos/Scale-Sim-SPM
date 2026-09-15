@@ -78,7 +78,7 @@ def _occupancy_trace(tensors, resident_action, spm_plan, memory_budget_bytes: in
     the overall peak. A second, independent physical-consistency check
     for free, on top of the one run_onsram.py's own validation already does.
     """
-    from helpers.spm_allocator import SpmAllocator  # COSMA's, unmodified
+    from spm_common.spm_allocator import SpmAllocator  # generic, paper-agnostic
     allocator = SpmAllocator(tensors, spm_plan, resident_action, memory_budget_bytes)
     occupied_by_ts = []
     for t in range(schedule_len):

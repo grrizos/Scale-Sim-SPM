@@ -190,9 +190,14 @@ if __name__ == '__main__':
     # policies must agree exactly -- an independent regression check
     # against replacement_engine.py's own __main__ hand-derivation.
     import os
-    from . import graph_builder, replacement_engine
+    import sys
+    from . import replacement_engine
 
-    here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # cosma/
+    repo_root = os.path.dirname(here)
+    if repo_root not in sys.path:
+        sys.path.insert(0, repo_root)
+    from spm_common import graph_builder
     nodes, tensors2 = graph_builder.load_graph(os.path.join(here, 'toy_spill_model.json'))
     schedule = [(0, 0), (1, 1), (2, 2), (3, 3)]
 

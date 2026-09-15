@@ -46,11 +46,19 @@ per the "activation tensors only" design decision).
 """
 import argparse
 import os
+import sys
 
-from helpers import graph_builder
+# spm_common/ is a repo-root sibling of cosma/, not a cosma/helpers/
+# submodule -- see spm_common/__init__.py for why graph_builder/
+# model_resolver live there instead of here.
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+
 from helpers import baseline
 from helpers import cosma_Ilp
-from helpers import model_resolver
+from spm_common import graph_builder
+from spm_common import model_resolver
 import visualize_spm
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -116,7 +124,7 @@ def run_cosma(model_json_path: str = DEFAULT_MODEL_JSON,
               solver: str = 'cbc') -> dict:
     """
     model_json_path may also be a raw .tflite file -- it's auto-exported
-    to model.json and cached under export_dir (see helpers/model_resolver.py,
+    to model.json and cached under export_dir (see spm_common/model_resolver.py,
     the same auto-export run_experiments.py already did; factored out so
     run_cosma.py doesn't require an already-exported model.json either).
 
@@ -221,7 +229,7 @@ def run_cosma(model_json_path: str = DEFAULT_MODEL_JSON,
     # spm_plan/tensors/memory_budget_bytes drive a live SpmAllocator replay
     # alongside the simulation -- an independent, physically-checked proof
     # that resident_action's claims are actually realizable at this budget,
-    # not just trusted (see helpers/spm_allocator.py). `schedule` is the
+    # not just trusted (see spm_common/spm_allocator.py). `schedule` is the
     # ILP's own chosen execution order (identity under free_schedule=False,
     # real reordering under True -- see cosma_Ilp.extract_results()).
     cosma_stats = baseline.run_cosma_aware(

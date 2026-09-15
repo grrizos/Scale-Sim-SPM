@@ -77,9 +77,18 @@ relative to COSMA's own joint placement+replacement ILP is exactly the
 weakness the paper's comparison exists to demonstrate -- see this
 module's own __main__ smoke test, Case B.
 """
+import os
+import sys
 from typing import Dict, List, Tuple
 
-from .spm_allocator import SpmAllocator
+# Normal usage (via run_paper_baselines.py) already has the repo root on
+# sys.path by the time this module is imported; this guard only matters
+# for this file's own standalone __main__ smoke test below.
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+
+from spm_common.spm_allocator import SpmAllocator
 
 
 class TfliteArenaAllocationError(RuntimeError):
