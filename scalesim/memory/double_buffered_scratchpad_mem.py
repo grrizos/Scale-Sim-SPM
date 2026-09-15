@@ -100,10 +100,29 @@ class double_buffered_scratchpad:
         to instantiate for the ifmap/filter read buffer, in place of the
         default rdbuf_est()/rdbuf() picked by estimate_bandwidth_mode.
         None (the default) reproduces the exact prior behavior for every
-        existing caller. Used by cosma/baseline.py's run_cosma_aware() to
-        install CosmaResidentReadBuffer (scalesim/memory/cosma_resident_buffers.py)
-        for a tensor COSMA's plan says is already resident, without
-        changing anything about how a genuine fetch is simulated.
+        existing caller. Used by cosma/baseline.py's run_cosma_aware() and
+        onsram/onsram_helpers/scale_sim_runner.py's run_onsram_aware() to
+        install a resident-read-buffer subclass (of ReadBufferEstimateBw --
+        see e.g. scalesim/memory/cosma_resident_buffers.py or
+        onsram/onsram_helpers/resident_buffers.py) for a tensor a caller's
+        own plan says is already resident, without changing anything about
+        how a genuine fetch is simulated.
+
+        ifmap_buf_class and filter_buf_class are each honored independently
+        of estimate_bandwidth_mode, and independently of each other: a
+        buffer takes the ReadBufferEstimateBw-based path (required by any
+        *_buf_class override, since every existing override subclasses
+        ReadBufferEstimateBw, not the bank/port-modeling read_buffer class)
+        whenever estimate_bandwidth_mode is True OR that buffer's own class
+        override is given. Previously this override was silently ignored
+        whenever estimate_bandwidth_mode was False (USER bandwidth mode):
+        that branch unconditionally constructed the plain rdbuf() class for
+        both buffers and never looked at ifmap_buf_class/filter_buf_class
+        at all, so a resident-read override had no effect in that mode --
+        confirmed directly: a tensor correctly marked resident in the
+        caller's own plan still incurred a full DRAM fetch, silently, with
+        no error of any kind. Overriding one buffer never changes how the
+        other is modeled, since the two are now decided independently.
         """
         self.layer_id = layer_id
         self.topo = topo
@@ -112,10 +131,11 @@ class double_buffered_scratchpad:
 
         self.estimate_bandwidth_mode = estimate_bandwidth_mode
 
-        if self.estimate_bandwidth_mode:
-            self.ifmap_buf = ifmap_buf_class() if ifmap_buf_class else rdbuf_est()
-            self.filter_buf = filter_buf_class() if filter_buf_class else rdbuf_est()
+        use_ifmap_estimate_buf = self.estimate_bandwidth_mode or ifmap_buf_class is not None
+        use_filter_estimate_buf = self.estimate_bandwidth_mode or filter_buf_class is not None
 
+        if use_ifmap_estimate_buf:
+            self.ifmap_buf = ifmap_buf_class() if ifmap_buf_class else rdbuf_est()
             self.ifmap_buf.set_params(backing_buf_obj=self.ifmap_port,
                                       total_size_bytes=ifmap_buf_size_bytes,
                                       word_size=word_size,
@@ -123,28 +143,14 @@ class double_buffered_scratchpad:
                                       backing_buf_default_bw=ifmap_backing_buf_bw,
                                       use_ramulator_trace=self.use_ramulator_trace
                                       )
-
-            self.filter_buf.set_params(backing_buf_obj=self.filter_port,
-                                       total_size_bytes=filter_buf_size_bytes,
-                                       word_size=word_size,
-                                       active_buf_frac=rd_buf_active_frac,
-                                       backing_buf_default_bw=filter_backing_buf_bw,
-                                       use_ramulator_trace=self.use_ramulator_trace
-                                       )
         else:
             self.ifmap_buf = rdbuf()
-            self.filter_buf = rdbuf()
-            
+
             if self.use_ramulator_trace == True:
                 root_path = os.getcwd()
-                #topology_file = self.topo.split('.')[0]
-                topology_file =''
+                topology_file = ''
                 ifmap_dram_trace = (root_path+"/results/"+topology_file+"_ifmapFile"+str(layer_id)+".npy")
-                filter_dram_trace = (root_path+"/results/"+topology_file+"_filterFile"+str(layer_id)+".npy")
-                ofmap_dram_trace = (root_path+"/results/"+topology_file+"_ofmapFile"+str(layer_id)+".npy")
                 self.ifmap_port.def_params(config = self.config, latency_file=ifmap_dram_trace)
-                self.filter_port.def_params(config = self.config, latency_file=filter_dram_trace)
-                self.ofmap_port.def_params(config=self.config, latency_file=ofmap_dram_trace)
 
             self.ifmap_buf.set_params(backing_buf_obj=self.ifmap_port,
                                       total_size_bytes=ifmap_buf_size_bytes,
@@ -157,6 +163,24 @@ class double_buffered_scratchpad:
                                       use_ramulator_trace=self.use_ramulator_trace
                                       )
 
+        if use_filter_estimate_buf:
+            self.filter_buf = filter_buf_class() if filter_buf_class else rdbuf_est()
+            self.filter_buf.set_params(backing_buf_obj=self.filter_port,
+                                       total_size_bytes=filter_buf_size_bytes,
+                                       word_size=word_size,
+                                       active_buf_frac=rd_buf_active_frac,
+                                       backing_buf_default_bw=filter_backing_buf_bw,
+                                       use_ramulator_trace=self.use_ramulator_trace
+                                       )
+        else:
+            self.filter_buf = rdbuf()
+
+            if self.use_ramulator_trace == True:
+                root_path = os.getcwd()
+                topology_file = ''
+                filter_dram_trace = (root_path+"/results/"+topology_file+"_filterFile"+str(layer_id)+".npy")
+                self.filter_port.def_params(config = self.config, latency_file=filter_dram_trace)
+
             self.filter_buf.set_params(backing_buf_obj=self.filter_port,
                                        total_size_bytes=filter_buf_size_bytes,
                                        word_size=word_size,
@@ -167,6 +191,19 @@ class double_buffered_scratchpad:
                                        enable_layout_evaluation=using_filter_custom_layout,
                                        use_ramulator_trace=self.use_ramulator_trace
                                        )
+
+        # ofmap is never part of the ifmap_buf_class/filter_buf_class
+        # override mechanism (a resident *write* buffer, when needed, is
+        # installed directly by the caller before set_params() ever runs --
+        # see e.g. run_onsram_aware()'s _make_memory_system() -- and
+        # set_params() never reassigns self.ofmap_buf), so its own
+        # ramulator-trace setup stays tied to the original
+        # estimate_bandwidth_mode flag alone, exactly as before this fix.
+        if not self.estimate_bandwidth_mode and self.use_ramulator_trace == True:
+            root_path = os.getcwd()
+            topology_file = ''
+            ofmap_dram_trace = (root_path+"/results/"+topology_file+"_ofmapFile"+str(layer_id)+".npy")
+            self.ofmap_port.def_params(config=self.config, latency_file=ofmap_dram_trace)
 
         self.ofmap_buf.set_params(backing_buf_obj=self.ofmap_port,
                                   total_size_bytes=ofmap_buf_size_bytes,
@@ -188,10 +225,25 @@ class double_buffered_scratchpad:
                                        ):
         """
         Method to read ifmap and filter prefetch matrices generated in the compute simulation.
+
+        single_layer_sim.py calls this whenever the config as a whole is in
+        USER bandwidth mode, on the (previously always true) assumption
+        that both buffers are the bank/port-modeling read_buffer class in
+        that mode, which is the only one that uses a prefetch matrix at
+        all -- ReadBufferEstimateBw-based buffers (the default in CALC
+        mode, and now also possible in USER mode via set_params()'s
+        ifmap_buf_class/filter_buf_class override, e.g. a resident-read
+        buffer for a tensor a caller's own plan says is already resident)
+        never had a set_fetch_matrix() method and never needed one. Guarded
+        per-buffer here (hasattr, not a mode check) so this stays correct
+        regardless of which buffer took which path -- a buffer that
+        doesn't use a prefetch matrix simply has nothing to install.
         """
 
-        self.ifmap_buf.set_fetch_matrix(ifmap_prefetch_mat)
-        self.filter_buf.set_fetch_matrix(filter_prefetch_mat)
+        if hasattr(self.ifmap_buf, 'set_fetch_matrix'):
+            self.ifmap_buf.set_fetch_matrix(ifmap_prefetch_mat)
+        if hasattr(self.filter_buf, 'set_fetch_matrix'):
+            self.filter_buf.set_fetch_matrix(filter_prefetch_mat)
 
     #
     def reset_buffer_states(self):
@@ -289,10 +341,15 @@ class double_buffered_scratchpad:
             self.stall_cycles += int(max(ifmap_stalls[0], filter_stalls[0], ofmap_stalls[0]))
             #self.stall_cycles += ifmap_stalls[0] + filter_stalls[0] + ofmap_stalls[0]
 
-        if self.estimate_bandwidth_mode:
-            # IDE shows warning as complete_all_prefetches is not implemented in read_buffer class
-            # It's harmless since read_buffer_estimate_bw is instantiated in estimate bandwidth mode
+        # Guarded per-buffer (hasattr), not by estimate_bandwidth_mode alone: that
+        # flag no longer determines which buffer class ifmap/filter actually are
+        # (see set_params()'s ifmap_buf_class/filter_buf_class override, honored
+        # independently of this flag since the USER-bandwidth-mode fix above) --
+        # read_buffer's own class genuinely has no complete_all_prefetches(), so
+        # this stays a no-op for it regardless of mode, exactly as before.
+        if hasattr(self.ifmap_buf, 'complete_all_prefetches'):
             self.ifmap_buf.complete_all_prefetches()
+        if hasattr(self.filter_buf, 'complete_all_prefetches'):
             self.filter_buf.complete_all_prefetches()
 
         self.ofmap_buf.empty_all_buffers(ofmap_serviced_cycles[-1])

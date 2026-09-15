@@ -38,8 +38,45 @@ Measured directly on the failing cases: the true aggregate peak simultaneous dem
 
 ---
 
+## Problem 4: SCALE-Sim's resident-buffer override is silently ignored in USER bandwidth mode
+
+**What happened.** OnSRAM's Phase D mechanism for crediting a pinned tensor's read as a free SPM hit (installing a custom read-buffer class in place of the normal one) works correctly under the default `CALC` bandwidth mode, but silently stops working the moment the config is switched to `InterfaceBandwidth: USER` — needed specifically to set an explicit external-memory bandwidth number (e.g. to match the paper's stated 32 GBps) rather than letting SCALE-Sim derive an implicit one from array width. Under `USER` mode, every pinned tensor's read is still charged as a full DRAM fetch, with no error or warning of any kind — the credit is just silently zero.
+
+**Root cause, confirmed by reading the engine source directly.** `scalesim/memory/double_buffered_scratchpad_mem.py`'s `set_params()` only honors a caller-supplied read-buffer class override inside its `if self.estimate_bandwidth_mode:` branch:
+```python
+if self.estimate_bandwidth_mode:
+    self.ifmap_buf = ifmap_buf_class() if ifmap_buf_class else rdbuf_est()
+    ...
+else:
+    self.ifmap_buf = rdbuf()   # ifmap_buf_class silently discarded here
+```
+`estimate_bandwidth_mode` is `True` exactly when bandwidth mode is `CALC` and `False` exactly when it's `USER` (confirmed in the calling code, which sets `estimate_bandwidth_mode = False` in the `use_user_dram_bandwidth()` branch). So in `USER` mode, the `else` branch always constructs the plain default buffer class, and the subsequent line that flags a specific tensor as fully resident is setting an attribute on an object that never checks it — a silent no-op, not an error.
+
+This is asymmetric: the equivalent override for the *write* buffer (used to model a freshly-produced output staying on-chip) is assigned directly on the memory-system object *before* `set_params()` runs, and `set_params()` never reassigns that field afterward — so the write-buffer override survives in both bandwidth modes. Only the read-buffer override is broken, and only in `USER` mode.
+
+**Impact.** Any Phase D run using a `USER`-mode config (needed for every bandwidth value that doesn't happen to match what `CALC` mode would have derived on its own) understated OnSRAM's true DRAM savings — the entire benefit of pinning an *input* activation went unmodeled, while the benefit of a freshly-produced *output* staying on-chip was still counted correctly. A run in the default `CALC`-mode config was unaffected.
+
+**Fix.** Patched in `scalesim/memory/double_buffered_scratchpad_mem.py`'s `set_params()`: the ifmap and filter read-buffer classes are now each decided independently (`estimate_bandwidth_mode OR that buffer's own class override`), so an override is honored in both bandwidth modes, and overriding one buffer never changes how the other is modeled. This surfaced a second, related gap: `single_layer_sim.py` calls `set_read_buf_prefetch_matrices()` whenever the config as a whole is in `USER` mode, assuming both buffers are always the bank/port-modeling class that uses a prefetch matrix — no longer true once a `ReadBufferEstimateBw`-based override can appear in that mode too. Fixed by guarding each buffer's prefetch-matrix call with `hasattr(..., 'set_fetch_matrix')` instead of a mode check, so a buffer that doesn't use a prefetch matrix (true for the override, and already true for `CALC` mode's own default) simply has nothing installed, rather than crashing.
+
+**Verified.** Regression-tested against `CALC`-mode results from before the fix (byte-for-byte identical: 84.21% DRAM reduction, 210,864 / 1,337,998 ifmap/ofmap credit bytes on `resnet20_cifar10`@1MB) and confirmed the fix itself under `USER` mode on the same model+budget: ifmap credit went from a silent `0` to a real `3,012,736` bytes, changing the measured speedup from a misleading ~1.003x to a genuine 1.87x once the paper's actual 39×39-array/32GBps ratio makes most baseline layers memory-bound.
+
+**Status.** Fixed.
+
+---
+
+## Problem 5: A config's bandwidth value must divide evenly across its bank count, with no clear error until it doesn't
+
+**What happened.** Setting `Bandwidth: 32` in `USER` mode, while leaving the inherited `IfmapSRAMBankNum`/`FilterSRAMBankNum` at `10`, fails with `AssertionError: overall bandwidth must be divisible by total number of banks, number of banks = 10, bandwidth of each as 3, total bandwidth = 32`.
+
+**Root cause.** `scalesim/memory/read_buffer.py` computes `bw_per_bank = req_gen_bandwidth // num_bank` (integer floor division) and then asserts `bw_per_bank * num_bank == req_gen_bandwidth`. Any bandwidth value not evenly divisible by the configured bank count trips this — a real, intentional invariant (bandwidth genuinely can't split evenly across banks otherwise), but one with no mention in the config format's own documentation, so it only surfaces once a specific numeric combination happens to violate it. The stock `scale.cfg` (`Bandwidth: 10`, `*SRAMBankNum: 10`) never hit this only because both numbers happened to already match.
+
+**Fix.** Set `IfmapSRAMBankNum`/`FilterSRAMBankNum` to `1` in any config that needs a specific, otherwise-arbitrary bandwidth value — with a single bank, the divisibility check is trivially satisfied for any bandwidth number.
+
+---
+
 ## Summary for write-up
 
 - The reference implementation contains a genuine off-by-one that inflates its own reported pinning success rate beyond what's physically achievable; this port uses the paper's own stated (inclusive) definition instead, at the cost of a lower — but real — pin ratio.
 - Making the Overwrite Optimization work correctly under real byte-addressed constraints requires one explicit exception to the general live-range rule, specific to reclaim-source tensors.
 - The paper's own feasibility check (aggregate byte-count only) is provably insufficient to guarantee a real placement exists, once actual SPM addresses are required instead of a closed-form bandwidth estimate — confirmed empirically on a large branched network, where the greedy algorithm's natural tendency to fill the budget to near-100% utilization leaves too little slack for any offline placement heuristic to reliably succeed.
+- Beyond the OnSRAM algorithm itself, wiring into real SCALE-Sim surfaced two genuine engine-level bugs: a bandwidth/bank-count mismatch fails with a correct but undocumented assertion; and — far more significantly — the engine's own mechanism for crediting a resident read as free was silently inert in `USER` bandwidth mode, understating measured DRAM savings for any experiment that needs an explicit, paper-matching bandwidth value rather than the engine's own derived default. The second one is now fixed and regression-tested; on the same model and budget, fixing it changed the measured speedup from a misleading ~1.003x to a genuine 1.87x once the paper's real hardware ratio (39×39 array, 32 GBps) is actually in effect.

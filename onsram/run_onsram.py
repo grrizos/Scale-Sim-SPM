@@ -673,6 +673,17 @@ if __name__ == '__main__':
     logs_dir = None if args.no_logs else args.logs_dir
     run_scale_sim = not args.no_scale_sim
 
+    if run_scale_sim and not os.path.isfile(args.config):
+        # configparser.read() silently ignores a missing file rather than
+        # raising -- without this check, a bad --config path (e.g. a
+        # relative path resolved against the wrong cwd) surfaces many
+        # steps later as a confusing "NoSectionError: No section: 'general'"
+        # instead of a clear, immediate, actionable message.
+        sys.exit(f"error: --config file not found: {args.config}\n"
+                 f"(if this is a relative path, note it resolves against your current "
+                 f"directory, not the repo root or onsram/ -- the default "
+                 f"({DEFAULT_CONFIG}) is always an absolute path and doesn't have this issue)")
+
     if args.plot:
         os.makedirs(args.plot_dir, exist_ok=True)
 
