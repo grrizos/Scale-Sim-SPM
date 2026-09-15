@@ -28,3 +28,5 @@ configs_test
 benchmark_results
 results/
 outputs/
+cosma/
+onsram/
