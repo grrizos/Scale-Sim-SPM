@@ -7,6 +7,47 @@ exists purely to write trace/report files (`savetxt`, `store_to_trace_mat_cache`
 well-understood ~25-35% of runtime (see `PERFORMANCE_FIXES.md`/`OPTIMIZATION_SURVEY.md`) and
 trimming I/O further isn't the interesting problem here.
 
+## What changed inside SCALE-Sim, and how it connects to the papers (simple terms)
+
+**What SCALE-Sim is, in one sentence:** a cycle-accurate simulator of a systolic-array chip — you
+give it a neural network's layers and a hardware config (array size, on-chip memory size,
+bandwidth), and it tells you exactly how many clock cycles the chip would need and how many bytes
+it would have to move to/from external DRAM.
+
+**What the two changes were:**
+
+1. **Speed fixes** (everything in `PERFORMANCE_FIXES.md`, `SMM_PERFORMANCE.md`,
+   `OPTIMIZATION_SURVEY.md`, and this doc). These make the simulator run faster on your laptop.
+   They change nothing about the numbers it reports — every fix was checked to produce
+   byte-identical output before and after. Not related to the papers at all, just wall-clock time.
+
+2. **A "this tensor is already on-chip" plug** (`scalesim/memory/cosma_resident_buffers.py` +
+   a small hook added to `double_buffered_scratchpad_mem.py`). This one *does* change what the
+   simulator can model, and it's the piece that connects to the papers.
+
+**Why that plug was needed:** COSMA and OnSRAM are two research papers that each propose an
+algorithm for deciding which pieces of data ("tensors" — a layer's input/output) should be kept
+in the small, fast on-chip memory (the SPM/scratchpad) instead of being written back and re-fetched
+from slow external DRAM between layers. Each paper's algorithm produces a plan: "keep tensor X
+on-chip from layer 3 through layer 7, don't bother for tensor Y."
+
+The problem: plain, stock SCALE-Sim has no concept of "trust me, this one's already on-chip" — it
+always simulates a full DRAM fetch for every input and a full DRAM write-back for every output,
+regardless of what any paper's algorithm decided. So there was no way to get an honest,
+engine-measured answer to "how much DRAM traffic / how many cycles does this paper's plan actually
+save," short of trusting the paper's own hand-written formula.
+
+The plug fixes exactly that gap: it lets a caller (COSMA's plan, or OnSRAM's plan) tell SCALE-Sim
+"for this specific tensor, at this specific point, skip the DRAM fetch/write, it's already
+resident" — and nothing else about the simulation changes. Every other tensor, every other layer,
+is simulated exactly as before, fetch-for-fetch. This is what turns "the paper claims a 30%
+speedup" into "we ran the paper's actual plan through a real simulated chip and measured a 30% (or
+different) speedup ourselves" — real verification instead of taking the paper's number on faith.
+
+That plug is additive and does nothing unless a caller explicitly uses it (regression-tested
+byte-identical to stock SCALE-Sim when left off) — so it doesn't affect anything in this
+performance doc's numbers, which were all measured with it untouched.
+
 ## Where the core-logic time actually goes
 
 | Function | File | % of total wall time | What it does |
