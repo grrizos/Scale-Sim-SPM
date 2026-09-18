@@ -279,6 +279,26 @@ def _run_layers(model_json_path: str, config_path: str,
     if resident_action is not None:
         allocator = SpmAllocator(tensors, spm_plan, resident_action, memory_budget_bytes)
 
+    # Budget-vs-working-set check: SpmAllocator (above) only ever verifies
+    # that resident tensors fit memory_budget_bytes *against each other* --
+    # it has no idea that _make_memory_system() below is about to also hand
+    # this same layer its own ifmap/filter/ofmap working buffers, sized to
+    # that layer's real tensor bytes, completely independent of the budget
+    # or of how much of it residency already claims. This block is a
+    # conservative, partial check of that gap: filter/weight bytes are
+    # NEVER part of resident_action (COSMA only tracks activations -- see
+    # graph_builder.py), so they're unambiguously *extra* on top of
+    # whatever's resident -- no double-counting risk. Ifmap/ofmap are
+    # deliberately left out: when the ifmap is 'P' (resident), the bytes
+    # `occupied_bytes()` already counts and the bytes `_make_memory_system()`
+    # sizes the buffer to are the same physical tensor, not two separate
+    # needs -- and it's genuinely unclear whether the double-buffered
+    # streaming space SCALE-Sim allocates on top of that should count as a
+    # *third*, additional need (see this project's own conversation notes
+    # on this). So this check can only ever under-count the real gap, never
+    # over-count it -- if it fires, the overflow is real.
+    budget_overflow_events = []
+
     row_to_stats: Dict[int, dict] = {}
     for t, lid in schedule:
         layer = layer_by_id[lid]
@@ -295,6 +315,11 @@ def _run_layers(model_json_path: str, config_path: str,
             allocator.step(t)
         if lid not in layer_id_to_row:
             continue
+        if allocator is not None:
+            _, _, filter_bytes = _layer_operand_bytes(layer, tensor_shapes)
+            combined = allocator.occupied_bytes() + filter_bytes
+            if combined > memory_budget_bytes:
+                budget_overflow_events.append((t, lid, combined - memory_budget_bytes))
         row_to_stats[layer_id_to_row[lid]] = _simulate_layer(
             config, topo, layout, layer_id_to_row[lid], layer, t, tensor_shapes,
             verbose, resident_action=resident_action)
@@ -310,6 +335,15 @@ def _run_layers(model_json_path: str, config_path: str,
         print(f"[COSMA SPM] verified {allocator.steps_taken()} timesteps, "
               f"peak occupancy {allocator.peak_occupied_bytes()}/{memory_budget_bytes} "
               f"bytes, 0 violations")
+        if budget_overflow_events:
+            worst_t, worst_lid, worst_over = max(budget_overflow_events, key=lambda e: e[2])
+            print(f"[COSMA SPM] WARNING: {len(budget_overflow_events)} of {len(schedule)} "
+                  f"timestep(s) exceed the {memory_budget_bytes}-byte budget once this "
+                  f"layer's own filter/weight bytes are added to what's resident; worst "
+                  f"case {worst_over} bytes over at t={worst_t} (layer {worst_lid})")
+        else:
+            print(f"[COSMA SPM] budget-vs-working-set check: 0 of {len(schedule)} "
+                  f"timesteps exceed the {memory_budget_bytes}-byte budget")
 
     layer_stats: Dict[int, dict] = {}
     for layer in model['layers']:

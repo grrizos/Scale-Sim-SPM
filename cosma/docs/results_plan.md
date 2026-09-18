@@ -55,12 +55,12 @@ models (via heuristics) in ~2 minutes.
 
 | Paper concept | Our status | Where |
 |---|---|---|
-| `M_R` | **Have it, faithful** | `cosma_Ilp.compute_structural_minimum_bytes()` — max over operators of activation-input + output bytes. Caveat: excludes weight bytes (activation-only tracking scope), so may under-count vs. the paper's `M_R` for weight-heavy operators — not confirmed either way. |
+| `M_R` | **Have it, faithful** | `cosma_Ilp.compute_structural_minimum_bytes()` — max over operators of activation-input + output bytes. Now confirmed against the primary source (§V-A, Fig.3 caption): the paper's own `M_R` is *also* activation-only — ours isn't under-counting it. The paper separately reports a parameter-inclusive `M_Rp` (same definition, bigger tensor set) alongside `M_R` for every human-designed DNN; this port doesn't compute that second number yet (see the activation+parameter row below). |
 | `M_P` | **Have it, real §III-E1/Eq.13-15 solve** | `cosma_Ilp.compute_true_mpmf_bytes()` — a genuinely separate, free-schedule ILP (`C[a,t]` a real variable, not fixed), reusing none of `build_cosma_model()`'s memory-allocation machinery (no `L`/Eq.9/10/11 — the paper's own text: "memory allocation is not considered" in this mode). `compute_mpmf_bytes()` (the old fixed-schedule proxy) is unchanged and still used by `--bounds-only`'s fast default path — `M_R ≤ true_M_P ≤ MPMF-proxy` always holds, verified on 6 models (see §4). Exposed via `visualize_spm.py --bounds-only --true-mpmf` (opt-in — a real solve, not instant). |
 | `M_H` | **Have it** | `(M_R + true_M_P) / 2`, computed inline (`visualize_spm.print_true_mpmf()`) wherever `--true-mpmf` is used — no dedicated function needed, it's one line. |
 | Primary metric (spill+retrieve bytes) | **Have it now** | `run_cosma.py`'s `total_non_compulsory_access_bytes` (added alongside this doc) = `total_idealized_spill_bytes + total_idealized_retrieve_bytes + total_real_retrieve_bytes`. |
 | Activation-only tracking | **Have it — it's the only mode** | `graph_builder.load_graph()`, unconditional. |
-| Activation+parameter tracking | **Not implemented; being designed** | See §6 below — a real semantic question, not a trivial flag, since weight tensors don't fit the existing Create/Preserve/Spill/Retrieve model the same way activations do. |
+| Activation+parameter tracking | **Not implemented** | Corrected against the primary source (§V-B): the paper's own "both activation tensors and parameter tensors" setting is *not* a different formulation — same Eq.1-12, same C/P/S/R model, just weights included in tensor set `A`. It's one of the paper's two standard settings, reported for all 10 human-designed DNNs in Fig.3 (as `M_Rp`/`M_Hp`/`M_Pp`), not a side study. The ILP side of this port needs no new constraint logic to match it — just extending `graph_builder.load_graph()`'s tensor scope. See §6 below for the real remaining question, which is about the *SCALE-Sim-simulated* numbers, not the ILP. |
 | Comparison baselines (TFLite × Belady/greedy) | **Not implemented — open future work** | Our baseline (SCALE-Sim's own default per-layer buffers, no cross-layer sharing) is a different, weaker comparison point. |
 | Operator scheduling | **Implemented in the main pipeline too** | `build_cosma_model(..., free_schedule=True)` — `C[a,t]` is now a real decision inside the *main* spill/retrieve pipeline itself (not just the isolated `M_P` model), and the ILP's chosen order drives a real SCALE-Sim re-simulation via `baseline.run_cosma_aware()`'s `schedule` param. Opt-in, default `False` (byte-identical to every previously published number). Verified on both toy fixtures, the small custom DenseNet fixture (real SCALE-Sim run), and ResNet-20-CIFAR10 — see §4/§7. Not yet run at ImageNet scale (Inception-V3/ResNet-50/DenseNet-121) — see §6 item 1. |
 | Divide-and-conquer (NAS-scale) | **Permanently out of scope** | Per explicit standing project direction. |
@@ -155,16 +155,25 @@ that only the fixed-schedule proxy was used, not real `M_P`.
    paper's own `O(|T|x|A|^2)` worst case (§III-F) — expect the same kind of
    solve-time jump already seen for the main pipeline on DenseNet-121 (item
    29: 47+ min of CBC time, killed before finishing).
-2. **Activation+parameter tracking** — in active design, not a trivial flag.
-   Weight tensors don't fit the existing Create/Preserve/Spill/Retrieve state
-   machine the same way activations do: an activation's `'C'` (create) event
-   is legitimately free (it's freshly computed on-chip), but a weight
-   tensor's first appearance is **never** free — it always requires a real
-   DRAM fetch, unlike a computed activation. Modeling a weight's first use as
-   a free `'C'` (the naive approach) would silently under-count real DRAM
-   cost. Needs either a virtual pre-schedule spill/retrieve seeding, or an
-   equivalent constraint change, worked out carefully before trusting any
-   resulting numbers.
+2. **Activation+parameter tracking** — corrected against the primary source
+   (see the mapping table above): the paper's own ILP needs no special
+   handling for weights, it just includes them in `A`. That means this
+   item isn't really an ILP-design question at all, it's a
+   *SCALE-Sim-simulation-accounting* question, specific to this port: an
+   activation's `'C'` (create) event maps naturally onto a real, already-
+   free SCALE-Sim event (computing a layer's own ofmap has no DRAM cost
+   in the engine, full stop) — but a weight tensor's `'C'` has no
+   equivalent free event to map onto, since a weight is never "computed
+   on-chip," it always needs at least one real DRAM fetch. The paper's own
+   ILP sidesteps this cleanly by never charging *any* `'C'` event in its
+   objective (Eq.12 only ever sums `S`/`R` terms) — compulsory cost, for
+   any tensor, activation or weight, is defined as outside the optimized
+   quantity entirely, so the ILP itself never needs to know weight-`'C'`
+   is "different." Simulating that same plan for real, though, requires
+   this port to decide how `baseline.run_cosma_aware()` charges a weight's
+   first, unavoidable fetch — the paper's own analytical accounting never
+   has to answer that, since it has no engine underneath it at all. Worked
+   out carefully before trusting any resulting numbers.
 3. **Comparison baselines** (TFLite linear allocator × Belady/greedy) — open
    future work, substantial reimplementation effort, not started.
 4. **Full operator rescheduling for the main (spill/retrieve) pipeline** —

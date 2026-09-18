@@ -282,6 +282,20 @@ def _run_layers(model_json_path: str, config_path: str,
     if resident_action is not None:
         allocator = SpmAllocator(tensors, spm_plan, resident_action, memory_budget_bytes)
 
+    # Budget-vs-working-set check: SpmAllocator (above) only ever verifies
+    # that resident (pinned) tensors fit memory_budget_bytes *against each
+    # other* -- it has no idea that _make_memory_system() below is about to
+    # also hand this same layer its own ifmap/filter/ofmap working buffers,
+    # sized to that layer's real tensor bytes, completely independent of
+    # the budget or of how much of it pinning already claims. This block is
+    # a conservative, partial check of that gap -- a self-contained
+    # duplicate of cosma/helpers/baseline.py's identical check, same
+    # isolation rationale as everywhere else in this port. See that
+    # module's own comment on this block for the full reasoning (filter
+    # bytes are unambiguously extra, never pinned; ifmap/ofmap deliberately
+    # excluded due to a genuine double-counting ambiguity with residency).
+    budget_overflow_events = []
+
     row_to_stats: Dict[int, dict] = {}
     for t, lid in schedule:
         layer = layer_by_id[lid]
@@ -296,6 +310,11 @@ def _run_layers(model_json_path: str, config_path: str,
             allocator.step(t)
         if lid not in layer_id_to_row:
             continue
+        if allocator is not None:
+            _, _, filter_bytes = _layer_operand_bytes(layer, tensor_shapes)
+            combined = allocator.occupied_bytes() + filter_bytes
+            if combined > memory_budget_bytes:
+                budget_overflow_events.append((t, lid, combined - memory_budget_bytes))
         row_to_stats[layer_id_to_row[lid]] = _simulate_layer(
             config, topo, layout, layer_id_to_row[lid], layer, t, tensor_shapes,
             verbose, resident_action=resident_action)
@@ -308,6 +327,15 @@ def _run_layers(model_json_path: str, config_path: str,
         print(f"[OnSRAM SPM] verified {allocator.steps_taken()} timesteps, "
               f"peak occupancy {allocator.peak_occupied_bytes()}/{memory_budget_bytes} "
               f"bytes, 0 violations")
+        if budget_overflow_events:
+            worst_t, worst_lid, worst_over = max(budget_overflow_events, key=lambda e: e[2])
+            print(f"[OnSRAM SPM] WARNING: {len(budget_overflow_events)} of {len(schedule)} "
+                  f"timestep(s) exceed the {memory_budget_bytes}-byte budget once this "
+                  f"layer's own filter/weight bytes are added to what's resident; worst "
+                  f"case {worst_over} bytes over at t={worst_t} (layer {worst_lid})")
+        else:
+            print(f"[OnSRAM SPM] budget-vs-working-set check: 0 of {len(schedule)} "
+                  f"timesteps exceed the {memory_budget_bytes}-byte budget")
 
     layer_stats: Dict[int, dict] = {}
     for layer in model['layers']:
