@@ -1,9 +1,20 @@
 # Vanilla vs. optimized SCALE-Sim benchmark
 
 Compares this repo (`sim-opt` branch) against a vanilla upstream SCALE-Sim
-clone across 5 models and an 11-combo parameter grid (plus a small
-dataflow addendum), with a cProfile-based function-time breakdown on a
-representative subset and a cycle-count correctness check.
+clone across 10 models (googlenet, resnet18, resnet50, vit_b, dense_sparse,
+vgg16, mobilenetv2, mnasnet, alexnet, squeezenet -- see models.py for
+provenance: VGG16/MobileNetV2 built from cosma/_exported model.json,
+MnasNet/SqueezeNet hand-derived from the real torchvision source since
+their exports were unavailable/broken) and a 20-combo
+parameter grid weighted toward USER interface bandwidth (15 array_size x
+sram_kb corners under USER, 2 matched corners under CALC, plus the anchor
+and 2 controls -- see combos.py) with a small dataflow addendum, a
+cProfile-based function-time breakdown on a representative subset, and a
+cycle-count correctness check. Each combo runs once per model/version (no
+repeats) -- USER is where the vanilla-vs-optimized gap actually shows up
+(see results.csv from the previous sweep), so CALC mostly stays at just the
+anchor + control combos, with 2 grid corners added for a direct
+CALC-vs-USER comparison at those specific array/sram points.
 
 ## Setup (do this first, on whichever machine runs the sweep)
 
@@ -30,11 +41,11 @@ python3 -m venv /path/to/optimized_venv
 ```bash
 cd /path/to/this/SCALE-Sim   # this repo, sim-opt branch -- benchmark/ lives here
 
-COMMON="--vanilla-repo /path/to/vanilla/SCALE-Sim \
-        --optimized-repo /path/to/this/SCALE-Sim \
-        --vanilla-venv-python /path/to/vanilla_venv/bin/python \
-        --optimized-venv-python /path/to/optimized_venv/bin/python \
-        --results-root /path/to/results"
+COMMON="--vanilla-repo /data/grizos/SCALE-Sim \
+        --optimized-repo /data/grizos/Scale-Sim-SPM \
+        --vanilla-venv-python /data/grizos/SCALE-Sim/venv/bin/python \
+        --optimized-venv-python /data/grizos/Scale-Sim-SPM/venv/bin/python \
+        --results-root /data/grizos/Scale-Sim-SPM/benchmarks/results"
 
 # 1. Catches setup problems (bad paths, wrong venv, missing topology files,
 #    insufficient disk space) before anything long-running starts.
@@ -48,10 +59,10 @@ python3 benchmark/run_sweep.py $COMMON --smoke-test
 #    to the full sweep -- these corners are untested territory, the
 #    documented numbers only cover the shipped-default config.
 python3 benchmark/run_sweep.py $COMMON \
-  --only model=resnet50,combo=grid_a64_s16_calc,version=vanilla,repeat=1 \
+  --only model=googlenet,combo=grid_a64_s16_user,version=vanilla,repeat=1 \
   --timeout-s 3600
 
-# 4. The full ~354-run sweep. Resumable -- safe to Ctrl-C and rerun the
+# 4. The full ~408-run sweep. Resumable -- safe to Ctrl-C and rerun the
 #    same command; completed runs are skipped.
 python3 benchmark/run_sweep.py $COMMON --timeout-s <set from step 3>
 

@@ -16,6 +16,7 @@ import matplotlib.pyplot as plt
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import combos as combos_mod
+from run_sweep import make_run_id
 
 VANILLA_COLOR = "#888888"
 OPTIMIZED_COLOR = "#2b7de9"
@@ -24,11 +25,13 @@ GRID_ONLY_COMBO_ORDER = [c for c in MAIN_GRID_COMBO_ORDER if c.startswith("grid_
 
 
 def load_dedup_rows(csv_path):
-    """Last occurrence per run_id wins (resume-safe against retry duplicates)."""
+    """Last occurrence per run_id wins (resume-safe against retry duplicates).
+    run_id isn't a CSV column -- reconstructed from model/combo_id/version/repeat_idx."""
     latest = {}
     with open(csv_path, newline="") as f:
         for row in csv.DictReader(f):
-            latest[row["run_id"]] = row
+            run_id = make_run_id(row["model"], row["combo_id"], row["version"], row["repeat_idx"])
+            latest[run_id] = row
     return list(latest.values())
 
 

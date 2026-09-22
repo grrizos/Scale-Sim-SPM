@@ -8,6 +8,10 @@ simulated results.
 import argparse
 import csv
 import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from run_sweep import make_run_id
 
 FIELDNAMES = [
     "model", "combo_id", "dataflow", "vanilla_run_id", "optimized_run_id",
@@ -21,10 +25,13 @@ FIELDNAMES = [
 
 def load_latest_rows(results_csv):
     """Last occurrence per run_id wins -- resume-safe against an
-    append-only results_raw.csv that can contain retry duplicates."""
+    append-only results_raw.csv that can contain retry duplicates. run_id
+    isn't a results_raw.csv column -- reconstructed here and stashed back
+    onto each row so it's still available as an identifier below."""
     latest = {}
     with open(results_csv, newline="") as f:
         for row in csv.DictReader(f):
+            row["run_id"] = make_run_id(row["model"], row["combo_id"], row["version"], row["repeat_idx"])
             latest[row["run_id"]] = row
     return latest
 

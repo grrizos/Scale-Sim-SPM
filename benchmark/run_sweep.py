@@ -31,7 +31,7 @@ COMBO_FIELDS = ["array_size", "sram_kb", "interface_bandwidth", "dataflow",
                  "ifmap_offset", "filter_offset", "ofmap_offset", "rng_seed"]
 
 FIELDNAMES = [
-    "run_id", "phase", "model", "combo_id", "version", "repeat_idx",
+    "phase", "model", "combo_id", "version", "repeat_idx",
     "array_size", "sram_kb", "interface_bandwidth", "dataflow",
     "ifmap_offset", "filter_offset", "ofmap_offset", "rng_seed",
     "wall_seconds", "returncode", "status", "timed_out",
@@ -39,6 +39,14 @@ FIELDNAMES = [
     "topology_file", "config_path", "output_dir", "log_path",
     "numpy_version", "hostname", "python_version", "cpu_model", "timestamp",
 ]
+# run_id isn't a CSV column -- it's fully reconstructable from
+# model/combo_id/version/repeat_idx (all already columns), so it'd just be
+# a redundant copy of them. Still used internally as the file/dir naming
+# key (cfg/output/log paths) and the resumability key.
+
+
+def make_run_id(model, combo_id, version, repeat_idx):
+    return f"{model}__{combo_id}__{version}__rep{repeat_idx}"
 
 
 # ---------------------------------------------------------------- tasks --
@@ -56,7 +64,7 @@ def build_tasks(repeats):
                     tasks.append(dict(
                         phase="main_grid", model=model, combo_id=combo_id, combo=combo,
                         repeat_idx=repeat_idx, version=version,
-                        run_id=f"{model}__{combo_id}__{version}__rep{repeat_idx}",
+                        run_id=make_run_id(model, combo_id, version, repeat_idx),
                     ))
 
     addendum_combos = combos.dataflow_addendum_combos()
@@ -67,7 +75,7 @@ def build_tasks(repeats):
                     tasks.append(dict(
                         phase="dataflow_addendum", model=model, combo_id=combo_id, combo=combo,
                         repeat_idx=repeat_idx, version=version,
-                        run_id=f"{model}__{combo_id}__{version}__rep{repeat_idx}",
+                        run_id=make_run_id(model, combo_id, version, repeat_idx),
                     ))
     return tasks
 
@@ -75,8 +83,9 @@ def build_tasks(repeats):
 def build_smoke_tasks():
     combo = combos.all_main_combos()["anchor"]
     return [
-        dict(phase="main_grid", model="alexnet", combo_id="anchor", combo=combo,
-             repeat_idx=1, version=version, run_id=f"alexnet__anchor__{version}__rep1")
+        dict(phase="main_grid", model="resnet18", combo_id="anchor", combo=combo,
+             repeat_idx=1, version=version,
+             run_id=make_run_id("resnet18", "anchor", version, 1))
         for version in ("vanilla", "optimized")
     ]
 
@@ -163,7 +172,9 @@ def execute_task(task, repos, venvs, results_root, timeout_s, static_meta):
     venv_python = venvs[version]
 
     cfg_dir = os.path.join(results_root, "cfgs")
-    cfg_path = config_gen.write_config(cfg_dir, run_id, **{k: combo[k] for k in COMBO_FIELDS})
+    cfg_path = config_gen.write_config(
+        cfg_dir, run_id, **{k: combo[k] for k in COMBO_FIELDS},
+        sparsity_support=model_info.get("sparsity_support", False))
 
     runs_parent_dir = os.path.join(results_root, "runs", version)
     os.makedirs(runs_parent_dir, exist_ok=True)
@@ -181,7 +192,7 @@ def execute_task(task, repos, venvs, results_root, timeout_s, static_meta):
     returncode, elapsed, timed_out = subprocess_utils.run_one(cmd, repo_root, log_path, timeout_s)
 
     row = dict(
-        run_id=run_id, phase=task["phase"], model=task["model"], combo_id=task["combo_id"],
+        phase=task["phase"], model=task["model"], combo_id=task["combo_id"],
         version=version, repeat_idx=task["repeat_idx"],
         array_size=combo["array_size"], sram_kb=combo["sram_kb"],
         interface_bandwidth=combo["interface_bandwidth"], dataflow=combo["dataflow"],
@@ -220,14 +231,16 @@ def execute_task(task, repos, venvs, results_root, timeout_s, static_meta):
 # ----------------------------------------------------------------- csv --
 
 def load_done_run_ids(csv_path):
-    """Last recorded status per run_id (append-only file, retries can add
+    """Last recorded status per run_id, reconstructed from
+    model/combo_id/version/repeat_idx (append-only file, retries can add
     more than one row for the same id) -- only 'ok' counts as done."""
     if not os.path.isfile(csv_path):
         return set()
     latest_status = {}
     with open(csv_path, newline="") as f:
         for row in csv.DictReader(f):
-            latest_status[row["run_id"]] = row["status"]
+            run_id = make_run_id(row["model"], row["combo_id"], row["version"], row["repeat_idx"])
+            latest_status[run_id] = row["status"]
     return {rid for rid, status in latest_status.items() if status == "ok"}
 
 
@@ -242,11 +255,11 @@ def main():
     ap.add_argument("--results-root", required=True)
     ap.add_argument("--timeout-s", type=float, default=3600.0,
                      help="per-run wall-clock cap; kills and logs, sweep continues (default 1h)")
-    ap.add_argument("--repeats", type=int, default=3)
+    ap.add_argument("--repeats", type=int, default=1)
     ap.add_argument("--smoke-test", action="store_true",
                      help="run one cheap task through the whole pipeline and exit")
     ap.add_argument("--only", default=None,
-                     help="e.g. model=resnet50,combo=grid_a64_s16_calc,version=vanilla,repeat=1")
+                     help="e.g. model=googlenet,combo=grid_a64_s16_user,version=vanilla,repeat=1")
     args = ap.parse_args()
 
     repos = {"vanilla": args.vanilla_repo, "optimized": args.optimized_repo}

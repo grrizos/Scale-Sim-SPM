@@ -37,10 +37,10 @@ FilterSRAMBankNum: 10
 FilterSRAMBankPort: 2
 
 [sparsity]
-SparsitySupport : false
+SparsitySupport : {sparsity_support}
 SparseRep : ellpack_block
-OptimizedMapping : false
-BlockSize : 8
+OptimizedMapping : {sparsity_optimized_mapping}
+BlockSize : {sparsity_block_size}
 RandomNumberGeneratorSeed : {rng_seed}
 
 [run_presets]
@@ -50,8 +50,17 @@ UseRamulatorTrace: False
 
 
 def write_config(cfg_dir, run_id, *, array_size, sram_kb, interface_bandwidth,
-                  dataflow, ifmap_offset, filter_offset, ofmap_offset, rng_seed):
-    """Writes <cfg_dir>/<run_id>.cfg and returns its path."""
+                  dataflow, ifmap_offset, filter_offset, ofmap_offset, rng_seed,
+                  sparsity_support=False):
+    """Writes <cfg_dir>/<run_id>.cfg and returns its path.
+
+    sparsity_support=True switches on the [sparsity] section per
+    README_Sparsity.md's documented example (SparseRep=ellpack_block,
+    OptimizedMapping=true, BlockSize=4) -- only meaningful paired with a
+    topology CSV that has the extra "Sparsity" (N:M) column, e.g.
+    topologies/sparsity/gemm.csv. Otherwise OptimizedMapping/BlockSize are
+    moot (SparsitySupport=false zeroes filter metadata bandwidth
+    regardless), so they keep the scale.cfg shipped defaults (false/8)."""
     os.makedirs(cfg_dir, exist_ok=True)
     path = os.path.join(cfg_dir, run_id + ".cfg")
     with open(path, "w") as f:
@@ -65,5 +74,8 @@ def write_config(cfg_dir, run_id, *, array_size, sram_kb, interface_bandwidth,
             dataflow=dataflow,
             rng_seed=rng_seed,
             interface_bandwidth=interface_bandwidth,
+            sparsity_support=sparsity_support,
+            sparsity_optimized_mapping=True if sparsity_support else False,
+            sparsity_block_size=4 if sparsity_support else 8,
         ))
     return path
