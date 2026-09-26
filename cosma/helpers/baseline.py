@@ -42,6 +42,7 @@ Two entry points:
     ILP has already resolved is short-circuited.
 """
 import json
+import math
 import os
 from typing import Dict, List, Tuple
 
@@ -80,6 +81,65 @@ def _activation_input_tensor_id(layer: dict):
     inputs_from = layer.get('inputs_from', [-1] * len(inputs))
     act_idx = next((i for i, src in enumerate(inputs_from) if src != -1), 0)
     return inputs[act_idx]
+
+
+def _ofmap_tensor_id(layer: dict):
+    """
+    The tensor id of this layer's own freshly-produced output -- mirrors
+    _activation_input_tensor_id()'s role for inputs. Only looks at
+    outputs[0] -- the same simplification _layer_operand_bytes()'s own
+    ofmap_bytes already makes. Returns None if the layer has no outputs.
+    """
+    outputs = layer.get('outputs', [])
+    return outputs[0] if outputs else None
+
+
+def _depthwise_channels(layer: dict):
+    """
+    C for a DEPTHWISE_CONV2D layer, else None. The topology builder writes
+    a depthwise layer as Channels = 1, Num Filter = C (channels-across-
+    columns), so SCALE-Sim simulates one input plane shared by all C
+    columns; _simulate_layer() uses C to correct the input side.
+    """
+    if layer.get('op') != 'DEPTHWISE_CONV2D':
+        return None
+    return layer['input_shape'][3]
+
+
+def _split_free_room(room: int, needs: dict) -> dict:
+    """
+    Splits a layer's free SPM room (what's left after resident tensors)
+    among its working buffers the way a tiled accelerator shares it: every
+    operand gets a part. Equal shares, except an operand that needs less
+    than its share keeps only what it needs and the rest is re-split among
+    the others (max-min fair / water-filling). So if everything fits,
+    everyone gets their full size; a small operand (e.g. a 2.5KB filter)
+    always fits whole; and big operands share the remainder and stream
+    through it in tiles. needs: {name: bytes}; returns {name: bytes}, which
+    sums to at most room.
+    """
+    shares = {}
+    left = room
+    pending = sorted(needs, key=lambda n: needs[n])
+    while pending:
+        fair = left // len(pending)
+        name = pending.pop(0)
+        shares[name] = min(needs[name], fair)
+        left -= shares[name]
+    return shares
+
+
+def _print_share_events(tag: str, operand: str, events: list, num_timesteps: int) -> None:
+    """One summary line for how often an operand didn't fit its share of the free room."""
+    if events:
+        worst_t, worst_lid, worst_short = max(events, key=lambda e: e[2])
+        print(f"[{tag} SPM] {operand} bigger than its share of the free room on "
+              f"{len(events)} of {num_timesteps} timestep(s) (worst case {worst_short} "
+              f"bytes short at t={worst_t}, layer {worst_lid}) -- logged only: under "
+              f"ideal tiling it streams through its share, each element read once")
+    else:
+        print(f"[{tag} SPM] {operand} fits its share of the free room on all "
+              f"{num_timesteps} timesteps")
 
 
 def _layer_operand_bytes(layer: dict, tensor_shapes: Dict[int, dict]):
@@ -201,6 +261,8 @@ def _simulate_layer(config, topo, layout, row: int, layer: dict, t: int,
         if ifmap_id is not None:
             ifmap_resident = resident_action.get((ifmap_id, t)) == 'P'
 
+    # Buffers are always their natural size (ideal tiling -- see
+    # _run_layers()'s comment on the free-room split).
     mem_sys = _make_memory_system(
         config, topo, row, ifmap_bytes, filter_bytes, ofmap_bytes, verbose,
         ifmap_resident=ifmap_resident,
@@ -217,11 +279,24 @@ def _simulate_layer(config, topo, layout, row: int, layer: dict, t: int,
     total_cycles = compute_items[1]  # index 1 = Total Cycles (excl. prefetch)
 
     detail_items = sim.get_detail_report_items()
+    ifmap_dram = int(detail_items[11])
+    if _depthwise_channels(layer):
+        # Depthwise: SCALE-Sim simulated ONE input plane shared by all C
+        # columns (see topology builder), so its ifmap count is for the
+        # wrong data. The real layer streams C planes, one per column;
+        # count that input as read once per element (same element units
+        # as SCALE-Sim's counts), 0 when it's already in the SPM. Scaling
+        # SCALE-Sim's one-plane count by C instead was tried and measured
+        # to over-count 5-22x on MobileNet (the one-plane stream gets
+        # re-read once per column fold). Compute, filter and ofmap come
+        # from SCALE-Sim as usual -- those are right for this mapping.
+        in_shape = tensor_shapes[_activation_input_tensor_id(layer)]['shape']
+        ifmap_dram = 0 if ifmap_resident else math.prod(in_shape)
     return {
         'compute_cycles': int(total_cycles),
         # kept split out (rather than pre-summed) so callers can attribute
         # each component separately -- see run_cosma.py's module docstring.
-        'ifmap_dram_bytes': int(detail_items[11]),
+        'ifmap_dram_bytes': ifmap_dram,
         'filter_dram_bytes': int(detail_items[14]),
         'ofmap_dram_bytes': int(detail_items[17]),
     }
@@ -279,25 +354,32 @@ def _run_layers(model_json_path: str, config_path: str,
     if resident_action is not None:
         allocator = SpmAllocator(tensors, spm_plan, resident_action, memory_budget_bytes)
 
-    # Budget-vs-working-set check: SpmAllocator (above) only ever verifies
-    # that resident tensors fit memory_budget_bytes *against each other* --
-    # it has no idea that _make_memory_system() below is about to also hand
-    # this same layer its own ifmap/filter/ofmap working buffers, sized to
-    # that layer's real tensor bytes, completely independent of the budget
-    # or of how much of it residency already claims. This block is a
-    # conservative, partial check of that gap: filter/weight bytes are
-    # NEVER part of resident_action (COSMA only tracks activations -- see
-    # graph_builder.py), so they're unambiguously *extra* on top of
-    # whatever's resident -- no double-counting risk. Ifmap/ofmap are
-    # deliberately left out: when the ifmap is 'P' (resident), the bytes
-    # `occupied_bytes()` already counts and the bytes `_make_memory_system()`
-    # sizes the buffer to are the same physical tensor, not two separate
-    # needs -- and it's genuinely unclear whether the double-buffered
-    # streaming space SCALE-Sim allocates on top of that should count as a
-    # *third*, additional need (see this project's own conversation notes
-    # on this). So this check can only ever under-count the real gap, never
-    # over-count it -- if it fires, the overflow is real.
+    # Budget-vs-working-set check: SpmAllocator (above) verifies resident
+    # tensors fit memory_budget_bytes against each other; they keep their
+    # space from one layer to the next. The room they leave
+    # (allocator.remaining_budget_for(), spm_common's) is each layer's
+    # working area, split among ifmap, filter and ofmap the way a tiled
+    # accelerator shares it (_split_free_room(): equal shares, an operand
+    # that needs less keeps just what it needs). An ifmap already in the
+    # SPM needs no working room.
+    #
+    # The split is logged only, never fed into SCALE-Sim's buffer sizes.
+    # This is the paper's own "ideal tiling" assumption (OnSRAM Sec. 6:
+    # "each data element is fetched once"): an operand bigger than its
+    # share streams through it tile by tile, each element read once.
+    # Shrinking SCALE-Sim's read buffers to the share instead was tried and
+    # measured to produce thrashing no real accelerator has (ResNet-50
+    # layer 61: 118M weight reads for 2.36M weights, and a smaller buffer
+    # giving less traffic than a bigger one). COSMA's ILP's own decisions are
+    # untouched and never see any of this.
+    #
+    # budget_overflow_events is kept as a frozen historical benchmark: it
+    # compares the layer's full filter bytes against what's resident, i.e.
+    # "would this layer's whole weight tensor fit next to the residents."
     budget_overflow_events = []
+    ifmap_ceiling_events = []
+    ofmap_ceiling_events = []
+    filter_ceiling_events = []
 
     row_to_stats: Dict[int, dict] = {}
     for t, lid in schedule:
@@ -315,11 +397,39 @@ def _run_layers(model_json_path: str, config_path: str,
             allocator.step(t)
         if lid not in layer_id_to_row:
             continue
+
         if allocator is not None:
-            _, _, filter_bytes = _layer_operand_bytes(layer, tensor_shapes)
+            ifmap_bytes, ofmap_bytes, filter_bytes = _layer_operand_bytes(layer, tensor_shapes)
             combined = allocator.occupied_bytes() + filter_bytes
             if combined > memory_budget_bytes:
                 budget_overflow_events.append((t, lid, combined - memory_budget_bytes))
+
+            ifmap_id = _activation_input_tensor_id(layer)
+            ofmap_id = _ofmap_tensor_id(layer)
+            claim_ids = tuple(tid for tid in (ifmap_id, ofmap_id) if tid is not None)
+            room_all = allocator.remaining_budget_for(claim_ids, t)
+
+            # An ifmap already in the SPM (resident) needs no
+            # working room; everything else shares room_all fairly.
+            ifmap_in_spm = ifmap_id is not None and resident_action.get((ifmap_id, t)) == 'P'
+            needs = {'filter': filter_bytes}
+            if ifmap_id is not None:
+                needs['ifmap'] = 0 if ifmap_in_spm else ifmap_bytes
+            if ofmap_id is not None:
+                needs['ofmap'] = ofmap_bytes
+            shares = _split_free_room(room_all, needs)
+            assert sum(shares.values()) <= room_all, (
+                f"free-room split arithmetic bug at t={t}, layer {lid}")
+
+            if shares['filter'] < filter_bytes:
+                filter_ceiling_events.append((t, lid, filter_bytes - shares['filter']))
+            if ifmap_id is not None:
+                if not ifmap_in_spm and shares['ifmap'] < ifmap_bytes:
+                    ifmap_ceiling_events.append((t, lid, ifmap_bytes - shares['ifmap']))
+            if ofmap_id is not None:
+                if shares['ofmap'] < ofmap_bytes:
+                    ofmap_ceiling_events.append((t, lid, ofmap_bytes - shares['ofmap']))
+
         row_to_stats[layer_id_to_row[lid]] = _simulate_layer(
             config, topo, layout, layer_id_to_row[lid], layer, t, tensor_shapes,
             verbose, resident_action=resident_action)
@@ -338,12 +448,17 @@ def _run_layers(model_json_path: str, config_path: str,
         if budget_overflow_events:
             worst_t, worst_lid, worst_over = max(budget_overflow_events, key=lambda e: e[2])
             print(f"[COSMA SPM] WARNING: {len(budget_overflow_events)} of {len(schedule)} "
-                  f"timestep(s) exceed the {memory_budget_bytes}-byte budget once this "
-                  f"layer's own filter/weight bytes are added to what's resident; worst "
+                  f"timestep(s) would exceed the {memory_budget_bytes}-byte budget under "
+                  f"the OLD, fully-unconstrained filter/weight treatment (layer's full "
+                  f"filter bytes on top of what's resident; see the filter line "
+                  f"below); worst "
                   f"case {worst_over} bytes over at t={worst_t} (layer {worst_lid})")
         else:
             print(f"[COSMA SPM] budget-vs-working-set check: 0 of {len(schedule)} "
                   f"timesteps exceed the {memory_budget_bytes}-byte budget")
+        _print_share_events('COSMA', 'ifmap', ifmap_ceiling_events, len(schedule))
+        _print_share_events('COSMA', 'ofmap', ofmap_ceiling_events, len(schedule))
+        _print_share_events('COSMA', 'filter', filter_ceiling_events, len(schedule))
 
     layer_stats: Dict[int, dict] = {}
     for layer in model['layers']:

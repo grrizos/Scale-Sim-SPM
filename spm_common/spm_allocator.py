@@ -266,6 +266,47 @@ class SpmAllocator:
     def occupied_bytes(self) -> int:
         return sum(size for _, size in self._occupants.values())
 
+    def remaining_budget_for(self, tensor_ids, t: int) -> int:
+        """
+        How much SPM room is left for one or more tensors' own fresh
+        allocation need at timestep t, given everything else currently
+        resident (call only after step(t) for this same t). tensor_ids is
+        either a single id or a group of ids sharing the same timestep's
+        fresh-allocation need -- e.g. a layer's own ifmap AND ofmap at that
+        layer's own t.
+
+        Excludes each id's own contribution if THAT id's own action at t
+        was 'C' or 'R' -- step(t) already added it to occupied bytes by the
+        time this is called, so without this exclusion a tensor being
+        fetched/created right now would be double-charged: once as
+        "already occupying room," again as "the thing that needs room
+        fetched into." Every OTHER tensor's contribution -- including
+        another id in the same group, if it doesn't also have a 'C'/'R'
+        action at this exact t (e.g. a 'P' resident ifmap) -- stays fully
+        counted, since it's a genuine, currently-resident competitor for
+        the same budget. Duplicate ids are excluded only once.
+
+        Generic across any plan shape -- a harmless no-op for any id whose
+        own action at t isn't 'C'/'R' (true for every OnSRAM consumer-side
+        tensor, which never retrieves, and whose own 'C' only ever lands at
+        a tensor's PRODUCER timestep -- not a paper-specific branch, just
+        what the data there looks like).
+
+        Used by both cosma/helpers/baseline.py and
+        onsram/onsram_helpers/scale_sim_runner.py to constrain each layer's
+        SCALE-Sim ifmap/ofmap/filter buffers to the real room left, instead
+        of always sizing them as if the whole budget were free for
+        whichever layer happens to be running.
+        """
+        if isinstance(tensor_ids, int):
+            tensor_ids = (tensor_ids,)
+        occupied = self.occupied_bytes()
+        actions_at_t = dict(self._actions_by_t.get(t, []))
+        for tid in dict.fromkeys(tensor_ids):
+            if actions_at_t.get(tid) in ('C', 'R'):
+                occupied -= self._tensors[tid].size_bytes
+        return max(self._budget - occupied, 0)
+
     def peak_occupied_bytes(self) -> int:
         return self._peak_bytes
 

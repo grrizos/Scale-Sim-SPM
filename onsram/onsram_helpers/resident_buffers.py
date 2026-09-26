@@ -81,10 +81,10 @@ class OnsramResidentWriteBuffer(write_buffer):
     This matches the same architectural assumption COSMA's own model uses
     (Eq.3: a tensor can only be spilled after being resident for a prior
     timestep, never at its own creation instant) -- a freshly-created
-    tensor that stays resident never needs a DRAM round-trip. OnSRAM's own
-    resident_action never spills at all (whole-lifetime pinning is
-    all-or-nothing), so for OnSRAM this is simply "every layer's own
-    output is free at creation," unconditionally.
+    tensor that stays resident never needs a DRAM round-trip. For OnSRAM,
+    scale_sim_runner installs this only for layers whose output OnSRAM
+    pinned ('C' at that layer's t); an unpinned output is written back to
+    DRAM through the normal write buffer (paper Sec. 3.2).
     """
 
     def __init__(self):

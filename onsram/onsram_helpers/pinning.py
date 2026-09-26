@@ -41,10 +41,17 @@ collide with tensor_6's own 'C' at t=1 (3.06MB against a 2MB budget);
 letting tensor_3 vacate at t=1 instead (this exception) makes the plan
 physically realizable, matching what the Overwrite Optimization's own
 accounting in decide_pinning() already assumed when it let tensor_6 fit.
-The disclosed cost: tensor_3's very last real read (by the node that
-also produces tensor_6) gets modeled as a DRAM fetch instead of an SPM
-hit in Phase D, since this port's placement layer can't express true
-address aliasing -- a conservative simplification, not a correctness bug.
+That vacating is only how the hand-off is shown to SpmAllocator's
+capacity/address check. The read itself is still an SPM read: tensor_3's
+last reader (the node that also produces tensor_6) reads tensor_3 from
+the SPM while tensor_6 takes over its space, as the paper's Overwrite
+Optimization describes. build_handoff_action() below records that read
+as a separate 'H' ("read from SPM, then free") action, in its own map
+kept apart from resident_action so the shared SpmAllocator never sees
+it; OnSRAM's own scale_sim_runner treats an 'H' read as a free SPM hit.
+(Before 'H' existed, that read was simulated as a full DRAM fetch, which
+threw away the benefit of every reclaimed pin -- 14 of MobileNet's 27
+pinned tensors at 2MB, including 11 of its 13 depthwise-layer inputs.)
 """
 from typing import Dict, Set, Tuple
 
@@ -186,3 +193,30 @@ def build_spm_plan(tensors: Dict[int, object],
     this model/budget combination, not something to swallow silently.
     """
     return place_tensors(tensors, resident_action, memory_budget_bytes)
+
+
+def build_handoff_action(pinned: Dict[int, bool],
+                          produced_at_ts: Dict[int, int],
+                          last_used_at_ts: Dict[int, int],
+                          reclaimed_source_ids: Set[int]
+                          ) -> Dict[Tuple[int, int], str]:
+    """
+    The Overwrite Optimization's hand-off reads: {(tensor_id, t): 'H'},
+    one entry per pinned reclaim source, at exactly the timestep
+    build_resident_action() dropped from its residency (its last-use
+    timestep). 'H' means "read from SPM, then free": the reading node
+    gets the tensor from the SPM while its own output takes over the
+    tensor's space. Kept as a separate map, never merged into
+    resident_action -- SpmAllocator (shared with COSMA) keeps seeing the
+    tensor vacate at t, which is what lets the reclaiming tensor's 'C'
+    take its space; only OnSRAM's own scale_sim_runner reads this map.
+    Same condition as build_resident_action()'s trim, so every trimmed
+    timestep gets exactly one 'H' and nothing else does.
+    """
+    handoff_action: Dict[Tuple[int, int], str] = {}
+    for tid, is_pinned in pinned.items():
+        if not is_pinned or tid not in reclaimed_source_ids:
+            continue
+        if len(live_range(produced_at_ts[tid], last_used_at_ts[tid])) > 1:
+            handoff_action[(tid, last_used_at_ts[tid])] = 'H'
+    return handoff_action

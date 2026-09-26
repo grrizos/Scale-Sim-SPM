@@ -97,6 +97,7 @@ infrastructure, are NOT.
 """
 import argparse
 import contextlib
+import dataclasses
 import csv
 import os
 import sys
@@ -201,9 +202,27 @@ def resolve_model_arg(model_arg: str) -> str:
         f"path, a .tflite path, or a name under {os.path.join(_COSMA_DIR, '_exported')}")
 
 
+def _at_paper_precision(tensors: dict, model_json_path: str) -> dict:
+    """
+    graph_builder (shared with COSMA) sizes tensors by model.json's dtype
+    (float32 = 4 bytes). OnSRAM's paper hardware is FP16, so rescale every
+    tensor to elements x scale_sim_runner.BYTES_PER_ELEMENT -- the same
+    value OnSRAM's SCALE-Sim wiring uses -- before pinning, placement and
+    the SpmAllocator check ever see a size. OnSRAM-only; COSMA's tensors
+    are untouched.
+    """
+    import json
+    with open(model_json_path, 'r') as f:
+        shapes = {t['id']: t['shape'] for t in json.load(f)['tensors']}
+    return {tid: dataclasses.replace(
+                t, size_bytes=scale_sim_runner._tensor_size_bytes(shapes[tid]))
+            for tid, t in tensors.items()}
+
+
 def run_onsram(model_json_path: str, memory_budget_bytes: int,
                verbose: bool = True) -> dict:
     nodes, tensors = graph_builder.load_graph(model_json_path)
+    tensors = _at_paper_precision(tensors, model_json_path)
     layer_meta = fom.load_layer_meta(model_json_path)
 
     node_flops = fom.estimate_node_flops(layer_meta)
@@ -225,6 +244,8 @@ def run_onsram(model_json_path: str, memory_budget_bytes: int,
 
     resident_action = pinning.build_resident_action(
         tensors, pinned, produced_at_ts, last_used_at_ts, reclaimed_source_ids)
+    handoff_action = pinning.build_handoff_action(
+        pinned, produced_at_ts, last_used_at_ts, reclaimed_source_ids)
     spm_plan = pinning.build_spm_plan(tensors, resident_action, memory_budget_bytes)
 
     pinned_count = sum(pinned.values())
@@ -241,6 +262,7 @@ def run_onsram(model_json_path: str, memory_budget_bytes: int,
         'schedule_order': schedule_order,
         'produced_at_ts': produced_at_ts, 'last_used_at_ts': last_used_at_ts,
         'reclaimed_source_ids': reclaimed_source_ids,
+        'handoff_action': handoff_action,
     }
 
 
@@ -280,14 +302,11 @@ def run_onsram_scale_sim(result: dict, model_json_path: str, config_path: str,
     port -- is the same "residency credit" concept COSMA's own accounting
     uses: bytes SCALE-Sim's engine confirms are avoidable simply by
     keeping an activation on-chip across layers (ifmap credit, from
-    resident_action 'P' entries) plus every layer's own output never
-    needing an immediate DRAM round-trip at creation (ofmap credit --
-    unconditional whenever resident_action is not None, independent of
-    any specific pinning choice; see resident_buffers.py's docstring).
-    Reported separately, not just as one combined total, so the log
-    doesn't conflate "saved because OnSRAM chose to pin this" with "saved
-    because run_onsram_aware() gives every layer's ofmap this for free
-    regardless."
+    resident_action 'P'/'H' reads) plus pinned outputs never being
+    written back to DRAM (ofmap credit -- only for outputs OnSRAM pinned,
+    'C' at their layer's t; unpinned outputs are written back as in the
+    baseline, per the paper's Sec. 3.2). Reported separately so the log
+    shows which side of pinning each byte saved comes from.
     """
     if bandwidth_bytes_per_cycle is None:
         bandwidth_bytes_per_cycle = _default_bandwidth_words_per_cycle(config_path)
@@ -304,7 +323,8 @@ def run_onsram_scale_sim(result: dict, model_json_path: str, config_path: str,
         onsram_stats = scale_sim_runner.run_onsram_aware(
             model_json_path, config_path, resident_action,
             spm_plan=result['spm_plan'], tensors=tensors,
-            memory_budget_bytes=memory_budget_bytes, schedule=schedule, verbose=verbose)
+            memory_budget_bytes=memory_budget_bytes, schedule=schedule, verbose=verbose,
+            handoff_action=result.get('handoff_action'))
     finally:
         heartbeat_stop.set()
 
@@ -381,8 +401,7 @@ def print_dram_savings(scale_sim_result: dict) -> None:
     print(f"    of which, ifmap residency credit:      {r['total_ifmap_residency_credit_bytes']:>12,d} bytes "
           f"(pinned tensors read from SPM instead of DRAM)")
     print(f"    of which, ofmap residency credit:      {r['total_ofmap_residency_credit_bytes']:>12,d} bytes "
-          f"(every layer's own output never round-trips DRAM at creation -- Eq.3, "
-          f"unconditional in this mode, not specific to OnSRAM's pinning choices)")
+          f"(pinned outputs not written back to DRAM)")
     print(f"  baseline total cycles:                   {r['baseline_total_cycles']:>12,.0f}")
     print(f"  OnSRAM-aware total cycles:                {r['onsram_total_cycles']:>12,.0f}")
     print(f"  speedup (baseline_cycles / onsram_cycles): {r['speedup']:.4f}x")

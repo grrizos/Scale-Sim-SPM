@@ -91,7 +91,14 @@ class read_buffer:
         # Calculate these based on the values provided
         self.total_size_elems = math.floor(self.total_size_bytes / self.word_size)
         self.active_buf_size = int(math.ceil(self.total_size_elems * self.active_buf_frac))
-        self.prefetch_buf_size = self.total_size_elems - self.active_buf_size
+        # Floor of 1: a buffer this tiny (total_size_elems == 1, e.g. a fetch constrained to the
+        # last byte of an almost-full SPM budget) can round its entire capacity into the active
+        # half, leaving nothing to prefetch -- new_prefetch() then computes a zero-length request
+        # and crashes on np.amax() of an empty array. Same fix, same rationale, as write_buffer.py's
+        # drain_buf_size floor and read_buffer_estimate_bw.py's num_items_per_set floor; this is the
+        # third sibling that needed it, just never driven this small before now. No-op for any
+        # normally-sized buffer.
+        self.prefetch_buf_size = max(1, self.total_size_elems - self.active_buf_size)
 
         self.backing_buffer = backing_buf_obj
         self.req_gen_bandwidth = backing_buf_bw

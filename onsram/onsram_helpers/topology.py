@@ -13,11 +13,21 @@ SCALE-Sim only simulates conv-like (GEMM-mappable) layers -- ADD, DENSE
 no topology row and get 0 compute/DRAM cost from SCALE-Sim's side.
 
 Depthwise conv has no native representation in SCALE-Sim's topology format
-(no "groups" concept). Following the same convention COSMA's own
-topology_builder.py already uses (itself following
-topologies/conv_nets/mobilenet.csv's pre-existing convention), a depthwise
-layer is represented as a row with Num Filter = 1 and Channels = the
-channel count.
+(no "groups" concept). A real accelerator maps it channels-across-columns:
+each array column holds one channel's kh x kw filter and works on that
+channel's input plane. The timing of that mapping is exactly what SCALE-Sim
+computes for a row with Channels = 1 and Num Filter = C (kh*kw array rows,
+C columns in ceil(C / ArrayWidth) folds), so that's the row written here.
+SCALE-Sim then gets compute cycles, filter traffic (kh*kw*C) and ofmap
+traffic (H'*W'*C) right. The one thing that row gets wrong is the input:
+SCALE-Sim sends one input plane to every column, while real depthwise reads
+C different planes. That doesn't matter here: OnSRAM's runner only takes
+compute time from SCALE-Sim and counts every layer's traffic as its real
+tensors, each element once (the paper's ideal-tiling model).
+(Previously written as Channels = C, Num Filter = 1, the
+topologies/conv_nets/mobilenet.csv convention: right MAC count, but it
+simulates a filter summing all C channels into one output channel -- 1 of
+the array's columns busy, 1-channel ofmap traffic.)
 """
 import csv
 import json
@@ -66,8 +76,13 @@ def build_onsram_topology(model_json_path: str, csv_path: str) -> Dict[int, int]
             ifmap_w = _same_padded_dim(ifmap_w, kw, stride)
 
         if op == 'DEPTHWISE_CONV2D':
-            channels = in_shape[3]
-            num_filters = 1
+            # Channels-across-columns (see module docstring). Assumes
+            # channel multiplier 1 (output channels == input channels),
+            # true for every depthwise layer in this repo's models.
+            assert out_shape[3] == in_shape[3], (
+                f"layer {layer['id']}: depthwise channel multiplier != 1 not supported")
+            channels = 1
+            num_filters = in_shape[3]
         else:
             channels = in_shape[3]
             num_filters = out_shape[3]
